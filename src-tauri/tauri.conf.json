@@ -57,7 +57,14 @@
         "icons/128x128@2x.png",
         "icons/icon.icns",
         "icons/icon.ico"
-      ]
+      ],
+      "macOS": {
+        "entitlements": "entitlements.plist",
+        "exceptionDomain": null,
+        "frameworks": [],
+        "minimumSystemVersion": "10.13",
+        "signingIdentity": null
+      }
     },
     "security": {
       "csp": null

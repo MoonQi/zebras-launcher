@@ -148,7 +148,8 @@ pub fn update_port_in_ts(content: &str, new_port: u16) -> String {
 
 /// 更新 TypeScript 配置文件中的 debug 对象
 pub fn update_debug_in_ts(content: &str, debug_map: &HashMap<String, String>) -> String {
-    let debug_block_regex = Regex::new(r"debug:\s*\{[^}]*\}").unwrap();
+    // 捕获 debug 块（包含可能存在的结尾逗号）
+    let debug_block_regex = Regex::new(r"(?s)debug:\s*\{.*?\}\s*,?").unwrap();
 
     // 构建新的 debug 对象字符串
     let debug_entries: Vec<String> = debug_map
@@ -162,17 +163,44 @@ pub fn update_debug_in_ts(content: &str, debug_map: &HashMap<String, String>) ->
         format!("debug: {{\n{},\n    }}", debug_entries.join(",\n"))
     };
 
-    if debug_block_regex.is_match(content) {
+    if let Some(mat) = debug_block_regex.find(content) {
         // 替换现有的 debug 块
         if new_debug_block.is_empty() {
             // 删除 debug 块（包括可能的逗号）
-            let result = debug_block_regex.replace(content, "").to_string();
-            // 清理可能的双逗号
-            result.replace(",,", ",")
+            let mut result = String::new();
+            result.push_str(&content[..mat.start()]);
+            result.push_str(&content[mat.end()..]);
+
+            // 清理可能遗留的逗号和空行：
+            // 1) 连续逗号 -> 单逗号
+            let no_double_commas = Regex::new(r",\s*,").unwrap().replace_all(&result, ",").to_string();
+            // 2) 左大括号后紧跟逗号 -> 去掉逗号
+            let no_leading_comma = Regex::new(r"\{\s*,").unwrap().replace_all(&no_double_commas, "{\n").to_string();
+            // 3) 结尾逗号紧贴右大括号 -> 去掉逗号
+            let no_trailing_comma = Regex::new(r",\s*}").unwrap().replace_all(&no_leading_comma, "\n}").to_string();
+            // 4) 压缩多余空行
+            Regex::new(r"\n\s*\n\s*\n+").unwrap().replace_all(&no_trailing_comma, "\n\n").to_string()
         } else {
-            debug_block_regex
-                .replace(content, &new_debug_block)
-                .to_string()
+            // 替换成新的 debug 块，并根据后续内容决定是否需要逗号
+            let before = &content[..mat.start()];
+            let after = &content[mat.end()..];
+
+            let needs_comma_after = after
+                .chars()
+                .skip_while(|c| c.is_whitespace() || *c == '\n' || *c == '\r')
+                .next()
+                .map_or(false, |c| c != '}');
+
+            let mut block = new_debug_block.clone();
+            if needs_comma_after {
+                block.push(',');
+            }
+
+            let mut updated = String::new();
+            updated.push_str(before);
+            updated.push_str(&block);
+            updated.push_str(after);
+            updated
         }
     } else {
         // 插入新的 debug 块（如果有内容）
@@ -278,5 +306,76 @@ export default {
 
         let debug = parse_debug_config(content);
         assert_eq!(debug.get("yilu_filing"), Some(&"http://localhost:8633".to_string()));
+    }
+
+    #[test]
+    fn update_debug_in_ts_removes_block_cleanly_when_only_debug_exists() {
+        let content = r#"
+export default {
+    debug: {
+        yilu_filing: 'http://localhost:8633',
+    },
+};
+"#;
+
+        let updated = update_debug_in_ts(content, &HashMap::new());
+        assert!(!updated.contains("debug"));
+        assert!(!updated.contains(",\n"));
+        assert!(updated.contains("export default {"));
+    }
+
+    #[test]
+    fn update_debug_in_ts_removes_block_without_breaking_other_fields() {
+        let content = r#"
+export default {
+    debug: {
+        yilu_filing: 'http://localhost:8633',
+    },
+    port: '8000',
+};
+"#;
+
+        let updated = update_debug_in_ts(content, &HashMap::new());
+        assert!(!updated.contains("debug"));
+        assert!(updated.contains("port: '8000'"));
+        assert!(updated.contains("export default {"));
+    }
+
+    #[test]
+    fn update_debug_in_ts_removes_block_when_debug_last_field() {
+        let content = r#"
+export default {
+    port: '8000',
+    name: 'demo',
+    debug: {
+        yilu_filing: 'http://localhost:8633',
+    },
+};
+"#;
+
+        let updated = update_debug_in_ts(content, &HashMap::new());
+        assert!(!updated.contains("debug"));
+        assert!(updated.contains("port: '8000'"));
+        assert!(updated.contains("name: 'demo'"));
+        assert!(!updated.contains(",\n}")); // 不应留下末尾逗号
+    }
+
+    #[test]
+    fn update_debug_in_ts_inserts_comma_when_followed_by_other_fields() {
+        let mut map = HashMap::new();
+        map.insert("yilu_filing".to_string(), "http://localhost:8633".to_string());
+        map.insert("yilu_office".to_string(), "http://localhost:7010".to_string());
+
+        let content = r#"
+export default {
+    port: '7000',
+};
+"#;
+
+        let updated = update_debug_in_ts(content, &map);
+        assert!(updated.contains("debug: {"));
+        assert!(updated.contains("yilu_office"));
+        assert!(updated.contains("port: '7000'"));
+        assert!(updated.contains("},\n    port")); // debug 后应有逗号再到 port
     }
 }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useWorkspace } from './hooks/useWorkspace';
 import { WorkspaceManager } from './components/workspace/WorkspaceManager';
 import { ProjectGrid } from './components/workspace/ProjectGrid';
-import { getWorkspaceList, loadWorkspace, deleteWorkspace, startAllProjects, stopAllProjects } from './services/tauri';
+import { getWorkspaceList, loadWorkspace, deleteWorkspace, startAllProjects, stopProject } from './services/tauri';
 import type { PortChange, WorkspaceRef, ProcessInfo } from './types';
 
 function App() {
@@ -129,14 +129,53 @@ function App() {
   };
 
   const handleStopAll = async () => {
-    try {
-      setError(null);
-      await stopAllProjects();
-      setRunningProcesses(new Map()); // 清空运行状态
-      alert('已停止所有运行中的项目！');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+    if (!workspace) return;
+
+    const processesToStop = workspace.projects
+      .map((project) => {
+        const process = runningProcesses.get(project.id);
+        return process ? { projectId: project.id, projectName: project.name, process } : null;
+      })
+      .filter((item): item is { projectId: string; projectName: string; process: ProcessInfo } => Boolean(item));
+
+    if (processesToStop.length === 0) {
+      alert('当前工作区没有运行中的项目！');
+      return;
     }
+
+    setError(null);
+
+    const results = await Promise.allSettled(
+      processesToStop.map(({ process }) => stopProject(process.process_id))
+    );
+
+    const stoppedProjectIds: string[] = [];
+    const failedMessages: string[] = [];
+
+    results.forEach((result, idx) => {
+      const { projectId, projectName } = processesToStop[idx];
+      if (result.status === 'fulfilled') {
+        stoppedProjectIds.push(projectId);
+      } else {
+        failedMessages.push(`${projectName}: ${String(result.reason)}`);
+      }
+    });
+
+    if (stoppedProjectIds.length > 0) {
+      setRunningProcesses((prev) => {
+        const updated = new Map(prev);
+        stoppedProjectIds.forEach((id) => updated.delete(id));
+        return updated;
+      });
+    }
+
+    if (failedMessages.length > 0) {
+      setError(`以下项目停止失败：${failedMessages.join('; ')}`);
+      alert(`部分项目未能停止（${failedMessages.length} 个）。`);
+      return;
+    }
+
+    alert(`已停止当前工作区的 ${stoppedProjectIds.length} 个项目！`);
   };
 
   // 处理调试配置变更，重新扫描项目

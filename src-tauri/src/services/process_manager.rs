@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use chrono::Utc;
 use serde::Serialize;
+use once_cell::sync::Lazy;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -16,6 +17,38 @@ pub struct LogMessage {
     pub project_name: String,
     pub message: String,
     pub stream: String, // "stdout" or "stderr"
+}
+
+/// 缓存用户终端的完整 PATH 环境变量 (macOS/Linux)
+/// 这样可以确保获取到 nvm、fnm、pnpm、npm global 等所有路径
+#[cfg(not(target_os = "windows"))]
+static USER_PATH: Lazy<String> = Lazy::new(|| {
+    get_user_shell_path().unwrap_or_else(|_| std::env::var("PATH").unwrap_or_default())
+});
+
+/// 从用户的 login shell 获取完整的 PATH 环境变量
+#[cfg(not(target_os = "windows"))]
+fn get_user_shell_path() -> Result<String, String> {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    
+    // 通过 login interactive shell 获取完整 PATH
+    // -l = login shell (读取 .zprofile/.bash_profile)
+    // -i = interactive shell (读取 .zshrc/.bashrc)
+    // -c = 执行命令
+    let output = Command::new(&shell)
+        .args(&["-l", "-i", "-c", "echo $PATH"])
+        .output()
+        .map_err(|e| format!("获取用户 PATH 失败: {}", e))?;
+    
+    if output.status.success() {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !path.is_empty() {
+            println!("[ProcessManager] 获取到用户 PATH: {}", path);
+            return Ok(path);
+        }
+    }
+    
+    Err("无法获取用户 PATH".to_string())
 }
 
 pub struct ProcessManager {
@@ -31,6 +64,12 @@ struct ProcessHandle {
 
 impl ProcessManager {
     pub fn new(window: tauri::Window) -> Self {
+        // 在创建时预热 PATH 缓存
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = &*USER_PATH;
+        }
+        
         Self {
             processes: Arc::new(Mutex::new(HashMap::new())),
             window,
@@ -71,19 +110,15 @@ impl ProcessManager {
 
         #[cfg(not(target_os = "windows"))]
         let mut child = {
-            // macOS/Linux: 使用 login shell 执行命令
-            // 这样可以加载用户的 shell 配置文件 (.zshrc, .bashrc 等)
-            // 从而获取完整的 PATH（包括 nvm, fnm, npm global 等）
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-            
-            // 构建在项目目录执行 npm run start 的命令
-            let shell_command = format!("cd '{}' && npm run start", project_path);
-            
-            let mut command = Command::new(&shell);
+            // macOS/Linux: 使用缓存的用户 PATH 环境变量
+            // 这个 PATH 是从用户的 login shell 获取的，包含了所有全局命令路径
+            let mut command = Command::new("npm");
             command
-                .args(&["-l", "-c", &shell_command])  // -l = login shell, -c = 执行命令
+                .args(&["run", "start"])
+                .current_dir(&project_path)
                 .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
+                .stderr(Stdio::piped())
+                .env("PATH", &*USER_PATH);  // 使用用户终端的完整 PATH
 
             command.spawn().map_err(|e| format!("启动项目失败: {}", e))?
         };

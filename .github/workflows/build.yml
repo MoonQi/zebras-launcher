@@ -26,14 +26,27 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: Install dependencies
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          npm cache clean --force
+          npm install --legacy-peer-deps
+
+      - name: Install dependencies (Windows)
+        if: matrix.platform == 'windows-latest'
         run: npm install
 
       - name: Build Tauri app

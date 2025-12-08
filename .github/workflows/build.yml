@@ -44,7 +44,7 @@ jobs:
         run: |
           npm cache clean --force
           rm -rf node_modules package-lock.json
-          npm install --legacy-peer-deps --no-optional
+          npm install --legacy-peer-deps
         env:
           npm_config_fetch_retries: 5
           npm_config_fetch_retry_mintimeout: 20000
@@ -56,7 +56,7 @@ jobs:
           npm cache clean --force
           if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
           if (Test-Path package-lock.json) { Remove-Item -Force package-lock.json }
-          npm install --no-optional
+          npm install
         env:
           npm_config_fetch_retries: 5
           npm_config_fetch_retry_mintimeout: 20000

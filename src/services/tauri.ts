@@ -1,0 +1,113 @@
+import { invoke } from '@tauri-apps/api/tauri';
+import type { Workspace, WorkspaceRef, ProjectInfo, PortChange, ProcessInfo } from '../types';
+
+// Workspace APIs
+export async function createWorkspace(name: string, folders: string[]): Promise<Workspace> {
+  return invoke('create_workspace', { name, folders });
+}
+
+export async function loadWorkspace(workspacePath: string): Promise<Workspace> {
+  return invoke('load_workspace', { workspacePath });
+}
+
+export async function scanWorkspaceProjects(folders: string[]): Promise<ProjectInfo[]> {
+  return invoke('scan_workspace_projects', { folders });
+}
+
+export async function saveWorkspace(workspace: Workspace): Promise<void> {
+  return invoke('save_workspace', { workspace });
+}
+
+export async function addWorkspaceFolder(workspace: Workspace, folderPath: string): Promise<Workspace> {
+  return invoke('add_workspace_folder', { workspace, folderPath });
+}
+
+export async function removeWorkspaceFolder(workspace: Workspace, folderPath: string): Promise<Workspace> {
+  return invoke('remove_workspace_folder', { workspace, folderPath });
+}
+
+export async function deleteWorkspace(workspaceId: string, rootPath: string): Promise<void> {
+  return invoke('delete_workspace', { workspaceId, rootPath });
+}
+
+export async function getWorkspaceList(): Promise<WorkspaceRef[]> {
+  return invoke('get_workspace_list');
+}
+
+export async function updateProjectEnabled(
+  workspace: Workspace,
+  projectId: string,
+  enabled: boolean
+): Promise<Workspace> {
+  return invoke('update_project_enabled', { workspace, projectId, enabled });
+}
+
+// Project APIs
+export async function getProjectDetails(projectPath: string): Promise<ProjectInfo> {
+  return invoke('get_project_details', { projectPath });
+}
+
+export async function rescanProject(projectPath: string): Promise<ProjectInfo> {
+  return invoke('rescan_project', { projectPath });
+}
+
+export async function isZebrasProject(projectPath: string): Promise<boolean> {
+  return invoke('is_zebras_project', { projectPath });
+}
+
+// Port APIs
+export async function checkPortAvailable(port: number): Promise<boolean> {
+  return invoke('check_port_available', { port });
+}
+
+export async function resolvePortConflicts(
+  currentWorkspaceId: string,
+  projects: ProjectInfo[],
+  portRangeStart: number,
+  portRangeEnd: number
+): Promise<[ProjectInfo[], PortChange[]]> {
+  return invoke('resolve_port_conflicts', {
+    currentWorkspaceId,
+    projects,
+    portRangeStart,
+    portRangeEnd,
+  });
+}
+
+// Process APIs
+export async function startProject(
+  projectId: string,
+  projectName: string,
+  projectPath: string
+): Promise<ProcessInfo> {
+  return invoke('start_project', { projectId, projectName, projectPath });
+}
+
+export async function stopProject(processId: string): Promise<void> {
+  return invoke('stop_project', { processId });
+}
+
+export async function getRunningProcesses(): Promise<ProcessInfo[]> {
+  return invoke('get_running_processes');
+}
+
+export async function stopAllProjects(): Promise<void> {
+  return invoke('stop_all_projects');
+}
+
+export async function startAllProjects(workspace: Workspace): Promise<ProcessInfo[]> {
+  return invoke('start_all_projects', { workspace });
+}
+
+// Debug APIs
+export async function updateDebugConfig(
+  projectPath: string,
+  projectVersion: string,
+  debugMap: Record<string, string>
+): Promise<void> {
+  return invoke('update_debug_config', {
+    projectPath,
+    projectVersion,
+    debugMap,
+  });
+}

@@ -1,0 +1,60 @@
+# ==================== Node.js ====================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==================== Build Output ====================
+dist/
+dist-ssr/
+*.local
+
+# ==================== Rust / Cargo ====================
+src-tauri/target/
+
+# ==================== Environment ====================
+.env
+.env.*
+!.env.example
+
+# ==================== IDE / Editor ====================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ==================== OS Generated ====================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ==================== Logs ====================
+logs/
+*.log
+
+# ==================== Temp Files ====================
+*.tmp
+*.temp
+*.patch
+*.diff
+temp_*
+
+# ==================== Test / Coverage ====================
+coverage/
+.nyc_output/
+
+# ==================== Misc ====================
+*.tsbuildinfo
+

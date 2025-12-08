@@ -323,10 +323,62 @@ impl ConfigParser {
             }
         }
 
-        // Fallback to regex when JSON 解析失败（可能存在尾随逗号等）
+        // Fallback to regex when JSON 解析失败（可能存在尾随逗号等），并跳过被注释的行/块
         let regex = Regex::new(r#""start"\s*:\s*"([^"]+)""#).ok()?;
-        let captures = regex.captures(content)?;
-        Some(captures.get(1)?.as_str().to_string())
+        let mut in_block_comment = false;
+
+        for line in content.lines() {
+            let mut slice = line;
+
+            if in_block_comment {
+                if let Some(end_idx) = slice.find("*/") {
+                    in_block_comment = false;
+                    slice = &slice[end_idx + 2..];
+                } else {
+                    continue;
+                }
+            }
+
+            loop {
+                if let Some(start_idx) = slice.find("/*") {
+                    let (before, after_start) = slice.split_at(start_idx);
+                    if let Some(captures) = regex.captures(before) {
+                        return Some(captures.get(1)?.as_str().to_string());
+                    }
+
+                    if let Some(end_idx) = after_start[2..].find("*/") {
+                        slice = &after_start[2 + end_idx + 2..];
+                        continue;
+                    } else {
+                        in_block_comment = true;
+                        break;
+                    }
+                }
+
+                let uncommented = if let Some(comment_idx) = slice.find("//") {
+                    let first_quote_idx = slice
+                        .char_indices()
+                        .find(|(_, c)| *c == '\'' || *c == '"')
+                        .map(|(idx, _)| idx);
+
+                    if first_quote_idx.map_or(true, |q_idx| comment_idx < q_idx) {
+                        &slice[..comment_idx]
+                    } else {
+                        slice
+                    }
+                } else {
+                    slice
+                };
+
+                if let Some(captures) = regex.captures(uncommented) {
+                    return Some(captures.get(1)?.as_str().to_string());
+                }
+
+                break;
+            }
+        }
+
+        None
     }
 
     /// 从文本中检测版本
@@ -388,5 +440,70 @@ mod tests {
         let path = PathBuf::from("/nonexistent/path");
         let result = ConfigParser::parse_project(&path);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_start_script_ignores_line_comment() {
+        let content = r#"
+{
+  "scripts": {
+    // "start": "zebra dev"
+    "build": "echo ok"
+  }
+}
+"#;
+
+        let result = ConfigParser::extract_start_script(content);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn extract_start_script_skips_block_comment_and_reads_real_value() {
+        let content = r#"
+{
+  /* "start": "zebra dev" */
+  "scripts": {
+    "start": "zebras dev" // trailing comment
+  }
+}
+"#;
+
+        let result = ConfigParser::extract_start_script(content);
+        assert_eq!(result.as_deref(), Some("zebras dev"));
+    }
+
+    #[test]
+    fn extract_start_script_ignores_multiline_block_comment() {
+        let content = r#"
+{
+  /*
+   * "start": "zebra dev"
+   */
+  "scripts": {
+    "build": "echo ok"
+  }
+}
+"#;
+
+        let result = ConfigParser::extract_start_script(content);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn extract_start_script_preserves_url_in_fallback() {
+        let content = r#"
+{
+  "scripts": {
+    "start": "vite --host http://localhost:3000",
+  }
+}
+"#;
+
+        // Invalid JSON (trailing comma) forces fallback regex
+        let result = ConfigParser::extract_start_script(content);
+        assert_eq!(
+            result.as_deref(),
+            Some("vite --host http://localhost:3000")
+        );
     }
 }

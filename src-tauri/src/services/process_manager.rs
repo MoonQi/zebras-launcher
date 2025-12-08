@@ -37,34 +37,10 @@ impl ProcessManager {
         }
     }
 
-    /// 查找 npm 命令路径
+    /// 查找 npm 命令路径 (仅 Windows 使用)
+    #[cfg(target_os = "windows")]
     fn find_npm_command() -> Result<String, String> {
-        #[cfg(target_os = "windows")]
-        {
-            return Ok("npm.cmd".to_string());
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            // macOS/Linux: 尝试多个可能的 npm 路径
-            let possible_paths = [
-                "/opt/homebrew/bin/npm",      // macOS Apple Silicon (Homebrew)
-                "/usr/local/bin/npm",         // macOS Intel (Homebrew) / Linux
-                "/usr/bin/npm",               // Linux 系统安装
-                "npm",                        // 回退到 PATH 查找
-            ];
-
-            for path in possible_paths {
-                if path == "npm" {
-                    return Ok(path.to_string());
-                }
-                if std::path::Path::new(path).exists() {
-                    return Ok(path.to_string());
-                }
-            }
-
-            Ok("npm".to_string())
-        }
+        Ok("npm.cmd".to_string())
     }
 
     /// 启动项目
@@ -76,37 +52,41 @@ impl ProcessManager {
     ) -> Result<ProcessInfo, String> {
         let process_id = uuid::Uuid::new_v4().to_string();
 
-        // 跨平台 npm 命令
-        let npm_cmd = Self::find_npm_command()?;
-
-        // 创建命令
-        let mut command = Command::new(&npm_cmd);
-        command
-            .args(&["run", "start"])
-            .current_dir(&project_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        // macOS/Linux: 设置完整的 PATH 环境变量
-        #[cfg(not(target_os = "windows"))]
-        {
-            let path = std::env::var("PATH").unwrap_or_default();
-            let extra_paths = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin";
-            let new_path = format!("{}:{}", extra_paths, path);
-            command.env("PATH", new_path);
-        }
-
-        // Windows: 隐藏控制台窗口
+        // 创建命令（跨平台处理）
         #[cfg(target_os = "windows")]
-        {
+        let mut child = {
+            let npm_cmd = Self::find_npm_command()?;
+            let mut command = Command::new(&npm_cmd);
+            command
+                .args(&["run", "start"])
+                .current_dir(&project_path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             command.creation_flags(CREATE_NO_WINDOW);
-        }
 
-        // 启动 npm run start
-        let mut child = command
-            .spawn()
-            .map_err(|e| format!("启动项目失败: {}", e))?;
+            command.spawn().map_err(|e| format!("启动项目失败: {}", e))?
+        };
+
+        #[cfg(not(target_os = "windows"))]
+        let mut child = {
+            // macOS/Linux: 使用 login shell 执行命令
+            // 这样可以加载用户的 shell 配置文件 (.zshrc, .bashrc 等)
+            // 从而获取完整的 PATH（包括 nvm, fnm, npm global 等）
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+            
+            // 构建在项目目录执行 npm run start 的命令
+            let shell_command = format!("cd '{}' && npm run start", project_path);
+            
+            let mut command = Command::new(&shell);
+            command
+                .args(&["-l", "-c", &shell_command])  // -l = login shell, -c = 执行命令
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+
+            command.spawn().map_err(|e| format!("启动项目失败: {}", e))?
+        };
 
         let pid = child.id();
 
@@ -199,27 +179,56 @@ impl ProcessManager {
 
             #[cfg(not(target_os = "windows"))]
             {
-                // macOS/Linux: 使用 pkill 杀死整个进程组
+                // macOS/Linux: 递归杀死整个进程树
                 let pid = handle.child.id();
-                // 先尝试发送 SIGTERM 给进程组
-                let _ = Command::new("pkill")
-                    .args(&["-TERM", "-P", &pid.to_string()])
-                    .spawn();
-                // 等待一小段时间后强制杀死
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                let _ = Command::new("pkill")
-                    .args(&["-KILL", "-P", &pid.to_string()])
-                    .spawn();
-                // 最后杀死父进程
-                let _ = Command::new("kill")
-                    .args(&["-9", &pid.to_string()])
-                    .spawn();
+                Self::kill_process_tree(pid);
             }
 
             Ok(())
         } else {
             Err("进程不存在".to_string())
         }
+    }
+
+    /// 递归获取所有子进程 ID (macOS/Linux)
+    #[cfg(not(target_os = "windows"))]
+    fn get_child_pids(pid: u32) -> Vec<u32> {
+        let output = Command::new("pgrep")
+            .args(&["-P", &pid.to_string()])
+            .output();
+
+        match output {
+            Ok(output) => {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .filter_map(|line| line.trim().parse::<u32>().ok())
+                    .collect()
+            }
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// 递归杀死进程树 (macOS/Linux)
+    #[cfg(not(target_os = "windows"))]
+    fn kill_process_tree(pid: u32) {
+        // 先递归收集所有子进程（深度优先）
+        let children = Self::get_child_pids(pid);
+        for child_pid in children {
+            Self::kill_process_tree(child_pid);
+        }
+
+        // 杀死当前进程：先 SIGTERM，再 SIGKILL
+        let _ = Command::new("kill")
+            .args(&["-TERM", &pid.to_string()])
+            .output(); // 使用 output() 等待命令完成
+
+        // 短暂等待进程优雅退出
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // 强制杀死（如果还在运行）
+        let _ = Command::new("kill")
+            .args(&["-9", &pid.to_string()])
+            .output();
     }
 
     /// 获取所有运行中的进程

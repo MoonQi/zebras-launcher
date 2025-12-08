@@ -37,6 +37,36 @@ impl ProcessManager {
         }
     }
 
+    /// 查找 npm 命令路径
+    fn find_npm_command() -> Result<String, String> {
+        #[cfg(target_os = "windows")]
+        {
+            return Ok("npm.cmd".to_string());
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            // macOS/Linux: 尝试多个可能的 npm 路径
+            let possible_paths = [
+                "/opt/homebrew/bin/npm",      // macOS Apple Silicon (Homebrew)
+                "/usr/local/bin/npm",         // macOS Intel (Homebrew) / Linux
+                "/usr/bin/npm",               // Linux 系统安装
+                "npm",                        // 回退到 PATH 查找
+            ];
+
+            for path in possible_paths {
+                if path == "npm" {
+                    return Ok(path.to_string());
+                }
+                if std::path::Path::new(path).exists() {
+                    return Ok(path.to_string());
+                }
+            }
+
+            Ok("npm".to_string())
+        }
+    }
+
     /// 启动项目
     pub async fn start_project(
         &self,
@@ -47,19 +77,24 @@ impl ProcessManager {
         let process_id = uuid::Uuid::new_v4().to_string();
 
         // 跨平台 npm 命令
-        let npm_cmd = if cfg!(target_os = "windows") {
-            "npm.cmd"
-        } else {
-            "npm"
-        };
+        let npm_cmd = Self::find_npm_command()?;
 
         // 创建命令
-        let mut command = Command::new(npm_cmd);
+        let mut command = Command::new(&npm_cmd);
         command
             .args(&["run", "start"])
             .current_dir(&project_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        // macOS/Linux: 设置完整的 PATH 环境变量
+        #[cfg(not(target_os = "windows"))]
+        {
+            let path = std::env::var("PATH").unwrap_or_default();
+            let extra_paths = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin";
+            let new_path = format!("{}:{}", extra_paths, path);
+            command.env("PATH", new_path);
+        }
 
         // Windows: 隐藏控制台窗口
         #[cfg(target_os = "windows")]

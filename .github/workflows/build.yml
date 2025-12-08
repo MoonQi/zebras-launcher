@@ -39,15 +39,28 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install dependencies (macOS)
+      - name: Clean npm cache and install dependencies (macOS)
         if: matrix.platform == 'macos-latest'
         run: |
           npm cache clean --force
-          npm install --legacy-peer-deps
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps --no-optional
+        env:
+          npm_config_fetch_retries: 5
+          npm_config_fetch_retry_mintimeout: 20000
+          npm_config_fetch_retry_maxtimeout: 120000
 
-      - name: Install dependencies (Windows)
+      - name: Clean npm cache and install dependencies (Windows)
         if: matrix.platform == 'windows-latest'
-        run: npm install
+        run: |
+          npm cache clean --force
+          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
+          if (Test-Path package-lock.json) { Remove-Item -Force package-lock.json }
+          npm install --no-optional
+        env:
+          npm_config_fetch_retries: 5
+          npm_config_fetch_retry_mintimeout: 20000
+          npm_config_fetch_retry_maxtimeout: 120000
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0

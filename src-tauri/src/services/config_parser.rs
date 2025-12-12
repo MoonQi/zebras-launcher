@@ -151,8 +151,14 @@ impl ConfigParser {
             .ok_or_else(|| ParseError::MissingField("name".to_string()))?
             .clone();
 
-        let platform = config.get("platform").map(|s| s.clone()).unwrap_or_else(|| "web".to_string());
-        let type_ = config.get("type").map(|s| s.clone()).unwrap_or_else(|| "app".to_string());
+        let platform = config
+            .get("platform")
+            .map(|s| s.clone())
+            .unwrap_or_else(|| "web".to_string());
+        let type_ = config
+            .get("type")
+            .map(|s| s.clone())
+            .unwrap_or_else(|| "app".to_string());
         let domain = config.get("domain").map(|s| s.clone());
         let framework = config.get("framework").map(|s| s.clone());
 
@@ -202,10 +208,10 @@ impl ConfigParser {
                 // 两个配置文件都存在，尝试比较配置文件的修改时间
                 let v3_path = project_path.join("zebras.config.ts");
                 let v2_path = project_path.join("zebra.json");
-                
+
                 let v3_modified = fs::metadata(&v3_path).and_then(|m| m.modified()).ok();
                 let v2_modified = fs::metadata(&v2_path).and_then(|m| m.modified()).ok();
-                
+
                 match (v3_modified, v2_modified) {
                     (Some(v3_time), Some(v2_time)) => {
                         if v3_time > v2_time {
@@ -283,7 +289,7 @@ impl ConfigParser {
     fn detect_version_from_package_json(project_path: &Path) -> Option<ZebrasVersion> {
         let package_path = project_path.join("package.json");
         let content = fs::read_to_string(&package_path).ok()?;
-        
+
         // 只从 scripts.start 字段检测版本，不做全文搜索
         // 避免其他字段（如 "upgrade": "npm i -g zebras-cli"）干扰判断
         if let Some(start_script) = Self::extract_start_script(&content) {
@@ -307,7 +313,7 @@ impl ConfigParser {
                 project_path.display()
             );
         }
-        
+
         // 不做全文搜索 fallback，让 parse_project 回退到文件检测
         None
     }
@@ -385,18 +391,18 @@ impl ConfigParser {
     /// V3 使用 "zebras"（复数），V2 使用 "zebra"（单数）
     fn determine_version_from_text(text: &str) -> Option<ZebrasVersion> {
         let normalized = text.to_lowercase();
-        
+
         // 先检查 V3（zebras，复数），因为 "zebras" 包含 "zebra" 作为子串
         // 必须先检查更长的字符串
         if normalized.contains("zebras") {
             return Some(ZebrasVersion::V3);
         }
-        
+
         // 然后检查 V2（zebra，单数）
         if normalized.contains("zebra") {
             return Some(ZebrasVersion::V2);
         }
-        
+
         None
     }
 
@@ -501,9 +507,6 @@ mod tests {
 
         // Invalid JSON (trailing comma) forces fallback regex
         let result = ConfigParser::extract_start_script(content);
-        assert_eq!(
-            result.as_deref(),
-            Some("vite --host http://localhost:3000")
-        );
+        assert_eq!(result.as_deref(), Some("vite --host http://localhost:3000"));
     }
 }

@@ -1,11 +1,11 @@
-pub mod workspace;
-pub mod project;
+pub mod debug;
 pub mod port;
 pub mod process;
-pub mod debug;
+pub mod project;
+pub mod workspace;
 
-pub use workspace::*;
-pub use project::*;
+pub use debug::*;
 pub use port::*;
 pub use process::*;
-pub use debug::*;
+pub use project::*;
+pub use workspace::*;

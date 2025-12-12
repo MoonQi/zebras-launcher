@@ -99,6 +99,15 @@ export async function startAllProjects(workspace: Workspace): Promise<ProcessInf
   return invoke('start_all_projects', { workspace });
 }
 
+export async function runProjectTask(
+  projectId: string,
+  projectName: string,
+  projectPath: string,
+  task: 'npm_install' | 'pnpm_install' | 'npm_deploy'
+): Promise<void> {
+  return invoke('run_project_task', { projectId, projectName, projectPath, task });
+}
+
 // Debug APIs
 export async function updateDebugConfig(
   projectPath: string,

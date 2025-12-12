@@ -1,8 +1,8 @@
 use crate::models::Workspace;
 use crate::services::WorkspaceService;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceList {
@@ -20,14 +20,12 @@ pub struct WorkspaceRef {
 impl WorkspaceList {
     /// 获取工作区列表文件路径
     fn get_list_path() -> Result<PathBuf, String> {
-        let home = dirs_next::home_dir()
-            .ok_or("无法获取用户主目录".to_string())?;
+        let home = dirs_next::home_dir().ok_or("无法获取用户主目录".to_string())?;
 
         let config_dir = home.join(".zebras-launcher");
 
         // 确保目录存在
-        fs::create_dir_all(&config_dir)
-            .map_err(|e| format!("创建配置目录失败: {}", e))?;
+        fs::create_dir_all(&config_dir).map_err(|e| format!("创建配置目录失败: {}", e))?;
 
         Ok(config_dir.join("workspaces.json"))
     }
@@ -42,11 +40,11 @@ impl WorkspaceList {
             });
         }
 
-        let content = fs::read_to_string(&list_path)
-            .map_err(|e| format!("读取工作区列表失败: {}", e))?;
+        let content =
+            fs::read_to_string(&list_path).map_err(|e| format!("读取工作区列表失败: {}", e))?;
 
-        let mut list: Self = serde_json::from_str(&content)
-            .map_err(|e| format!("解析工作区列表失败: {}", e))?;
+        let mut list: Self =
+            serde_json::from_str(&content).map_err(|e| format!("解析工作区列表失败: {}", e))?;
 
         // 自动迁移旧配置
         list.migrate_old_configs()?;
@@ -87,7 +85,11 @@ impl WorkspaceList {
                         workspace_ref.config_path = new_path;
                         needs_save = true;
 
-                        println!("已迁移工作区: {} -> {}", workspace_ref.name, workspace_ref.config_path.display());
+                        println!(
+                            "已迁移工作区: {} -> {}",
+                            workspace_ref.name,
+                            workspace_ref.config_path.display()
+                        );
                     }
                     Err(e) => {
                         eprintln!("无法加载旧工作区 {}: {}", workspace_ref.name, e);
@@ -111,8 +113,7 @@ impl WorkspaceList {
         let json = serde_json::to_string_pretty(&self)
             .map_err(|e| format!("序列化工作区列表失败: {}", e))?;
 
-        fs::write(&list_path, json)
-            .map_err(|e| format!("写入工作区列表失败: {}", e))?;
+        fs::write(&list_path, json).map_err(|e| format!("写入工作区列表失败: {}", e))?;
 
         Ok(())
     }

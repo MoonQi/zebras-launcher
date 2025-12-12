@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/api/shell';
 import type { ProjectInfo, ProcessInfo, LogMessage, Workspace } from '../../types';
-import { startProject, stopProject, updateDebugConfig, updateProjectEnabled } from '../../services/tauri';
+import { runProjectTask, startProject, stopProject, updateDebugConfig, updateProjectEnabled } from '../../services/tauri';
 
 interface ProjectCardProps {
   project: ProjectInfo;
@@ -14,14 +14,24 @@ interface ProjectCardProps {
   onWorkspaceUpdate: (workspace: Workspace) => void;
 }
 
+type QuickTask = 'npm_install' | 'pnpm_install' | 'npm_deploy';
+
+const QUICK_TASK_LABELS: Record<QuickTask, string> = {
+  npm_install: 'npm install',
+  pnpm_install: 'pnpm install',
+  npm_deploy: 'npm run deploy',
+};
+
 export function ProjectCard({ project, processInfo, onProcessStart, onProcessStop, allProjects, workspace, onWorkspaceUpdate }: ProjectCardProps) {
   const [isStarting, setIsStarting] = useState(false);
   const [logs, setLogs] = useState<LogMessage[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [followLogs, setFollowLogs] = useState(true);
   const [showDebugConfig, setShowDebugConfig] = useState(false);
   const [debugConfig, setDebugConfig] = useState<Record<string, string>>(project.debug || {});
   const [selectedProject, setSelectedProject] = useState<string>('');
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const [quickTask, setQuickTask] = useState<QuickTask | null>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setDebugConfig(project.debug || {});
@@ -30,7 +40,7 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
   useEffect(() => {
     const unlisten = listen<LogMessage>('process_log', (event) => {
       const log = event.payload;
-      if (processInfo && log.process_id === processInfo.process_id) {
+      if (log.project_id === project.id) {
         setLogs(prev => [...prev, log]);
       }
     });
@@ -38,17 +48,20 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [processInfo]);
+  }, [project.id]);
 
   useEffect(() => {
-    if (showLogs && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (!showLogs || !followLogs) return;
+    const container = logContainerRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     }
-  }, [logs, showLogs]);
+  }, [logs, showLogs, followLogs]);
 
   useEffect(() => {
     if (processInfo?.status === 'running') {
       setShowLogs(true);
+      setFollowLogs(true);
     }
   }, [processInfo?.status]);
 
@@ -73,6 +86,24 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
       onProcessStop(project.id);
     } catch (err) {
       alert(`停止失败: ${err}`);
+    } finally {
+      setIsStarting(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    if (!processInfo) return;
+    try {
+      setIsStarting(true);
+      setLogs([]);
+      await stopProject(processInfo.process_id);
+      onProcessStop(project.id);
+      const info = await startProject(project.id, project.name, project.path);
+      onProcessStart(project.id, info);
+      setShowLogs(true);
+      setFollowLogs(true);
+    } catch (err) {
+      alert(`重启失败: ${err}`);
     } finally {
       setIsStarting(false);
     }
@@ -114,6 +145,59 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
       onWorkspaceUpdate(updatedWorkspace);
     } catch (err) {
       alert(`更新启用状态失败: ${err}`);
+    }
+  };
+
+  const handleLogsScroll = () => {
+    const container = logContainerRef.current;
+    if (!container) return;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 16;
+    if (followLogs !== isNearBottom) {
+      setFollowLogs(isNearBottom);
+    }
+  };
+
+  const handleRunTask = async (task: QuickTask) => {
+    try {
+      setQuickTask(task);
+      setShowLogs(true);
+      setFollowLogs(true);
+      setLogs(prev => [
+        ...prev,
+        {
+          process_id: `task-${Date.now()}`,
+          project_id: project.id,
+          project_name: project.name,
+          message: `开始执行 ${QUICK_TASK_LABELS[task]}`,
+          stream: 'stdout',
+        },
+      ]);
+      await runProjectTask(project.id, project.name, project.path, task);
+      setLogs(prev => [
+        ...prev,
+        {
+          process_id: `task-${Date.now()}`,
+          project_id: project.id,
+          project_name: project.name,
+          message: `${QUICK_TASK_LABELS[task]} 完成`,
+          stream: 'stdout',
+        },
+      ]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setLogs(prev => [
+        ...prev,
+        {
+          process_id: `task-${Date.now()}`,
+          project_id: project.id,
+          project_name: project.name,
+          message: `任务失败: ${message}`,
+          stream: 'stderr',
+        },
+      ]);
+      alert(`执行命令失败: ${message}`);
+    } finally {
+      setQuickTask(null);
     }
   };
 
@@ -287,7 +371,7 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
       {/* Actions Footer */}
       {project.is_valid && (
         <div className="mt-auto" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div className="flex gap-sm">
+          <div className="flex gap-sm flex-wrap">
             <button
               onClick={isRunning ? handleStop : handleStart}
               disabled={isStarting}
@@ -301,6 +385,18 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
                 </>
               ) : isRunning ? '停止运行' : '启动项目'}
             </button>
+
+            {isRunning && (
+              <button
+                onClick={handleRestart}
+                disabled={isStarting}
+                className="btn btn-secondary"
+                style={{ padding: '0.5rem 0.75rem', fontWeight: 600, color: 'var(--color-warning)', borderColor: 'var(--color-warning)', backgroundColor: 'rgba(245, 158, 11, 0.12)' }}
+                title="重启项目"
+              >
+                重启
+              </button>
+            )}
             
             <button
               onClick={() => setShowDebugConfig(!showDebugConfig)}
@@ -311,16 +407,47 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
              
-             {isRunning && (
+             {(isRunning || logs.length > 0) && (
               <button
-                onClick={() => setShowLogs(!showLogs)}
-                 className={`btn ${showLogs ? 'btn-secondary' : 'btn-ghost'}`}
-                 style={{ padding: '0.5rem', borderColor: showLogs ? 'var(--color-border)' : 'transparent', backgroundColor: showLogs ? 'var(--color-surface-hover)' : 'transparent' }}
+                onClick={() => setShowLogs(prev => {
+                  const next = !prev;
+                  if (next) setFollowLogs(true);
+                  return next;
+                })}
+                className={`btn ${showLogs ? 'btn-secondary' : 'btn-ghost'}`}
+                style={{ padding: '0.5rem', borderColor: showLogs ? 'var(--color-border)' : 'transparent', backgroundColor: showLogs ? 'var(--color-surface-hover)' : 'transparent' }}
                 title="查看日志"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
               </button>
             )}
+          </div>
+
+          <div className="flex gap-xs flex-wrap">
+            <button
+              onClick={() => handleRunTask('npm_install')}
+              disabled={!!quickTask || isStarting}
+              className={`btn ${quickTask === 'npm_install' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '0.35rem 0.75rem' }}
+            >
+              {quickTask === 'npm_install' ? 'npm i 中...' : 'npm i'}
+            </button>
+            <button
+              onClick={() => handleRunTask('pnpm_install')}
+              disabled={!!quickTask || isStarting}
+              className={`btn ${quickTask === 'pnpm_install' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '0.35rem 0.75rem' }}
+            >
+              {quickTask === 'pnpm_install' ? 'pnpm i 中...' : 'pnpm i'}
+            </button>
+            <button
+              onClick={() => handleRunTask('npm_deploy')}
+              disabled={!!quickTask || isStarting}
+              className={`btn ${quickTask === 'npm_deploy' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '0.35rem 0.75rem' }}
+            >
+              {quickTask === 'npm_deploy' ? 'deploy 中...' : 'npm run deploy'}
+            </button>
           </div>
 
           {/* Debug Configuration Panel */}
@@ -388,7 +515,7 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
           )}
 
           {/* Logs Panel */}
-          {isRunning && showLogs && (
+          {showLogs && (isRunning || logs.length > 0) && (
             <div style={{ 
               borderRadius: 'var(--radius-md)', 
               overflow: 'hidden', 
@@ -399,14 +526,30 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
             }}>
                <div className="flex justify-between items-center" style={{ padding: '6px 10px', backgroundColor: 'rgba(255,255,255,0.05)', borderBottom: '1px solid var(--color-border)' }}>
                 <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', letterSpacing: '0.05em', fontWeight: 600 }}>CONSOLE OUTPUT</span>
-                <button 
-                  onClick={() => setLogs([])} 
-                  style={{ fontSize: '10px', color: 'var(--color-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                >
-                  Clear
-                </button>
+                <div className="flex items-center gap-sm">
+                  <button
+                    onClick={() => setFollowLogs(!followLogs)}
+                    style={{ fontSize: '10px', color: 'var(--color-text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    {followLogs ? '取消跟随' : '跟随输出'}
+                  </button>
+                  <button 
+                    onClick={() => setShowLogs(false)} 
+                    style={{ fontSize: '10px', color: 'var(--color-text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    收起
+                  </button>
+                  <button 
+                    onClick={() => setLogs([])} 
+                    style={{ fontSize: '10px', color: 'var(--color-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
               <div
+                ref={logContainerRef}
+                onScroll={handleLogsScroll}
                 style={{
                   padding: '10px',
                   fontFamily: 'monospace',
@@ -434,7 +577,6 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
                     </div>
                   ))
                 )}
-                <div ref={logsEndRef} />
               </div>
             </div>
           )}

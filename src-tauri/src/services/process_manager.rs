@@ -1,12 +1,14 @@
 use crate::models::{ProcessInfo, ProcessStatus};
+use chrono::Utc;
+use once_cell::sync::Lazy;
+use serde::Serialize;
 use std::collections::HashMap;
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use chrono::Utc;
-use serde::Serialize;
-use once_cell::sync::Lazy;
+use tokio::process::Command as TokioCommand;
+use tokio::sync::Mutex;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -14,6 +16,7 @@ use std::os::windows::process::CommandExt;
 #[derive(Clone, Serialize)]
 pub struct LogMessage {
     pub process_id: String,
+    pub project_id: String,
     pub project_name: String,
     pub message: String,
     pub stream: String, // "stdout" or "stderr"
@@ -36,14 +39,14 @@ fn get_user_shell_path() -> Result<String, String> {
     // 方法 1: 尝试使用非交互式 login shell (只用 -l，不用 -i)
     // 这样只会读取 .zprofile/.bash_profile，避免 .zshrc 中可能触发交互的内容
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-    
+
     let output = Command::new(&shell)
         .args(&["-l", "-c", "echo $PATH"])
-        .stdin(Stdio::null())  // 明确关闭 stdin，确保非交互
+        .stdin(Stdio::null()) // 明确关闭 stdin，确保非交互
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output();
-    
+
     if let Ok(output) = output {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -53,15 +56,16 @@ fn get_user_shell_path() -> Result<String, String> {
             }
         }
     }
-    
+
     // 方法 2: 直接构建常用的 PATH 路径
     // 这是一个更可靠的 fallback，包含大多数 Node.js 版本管理器的路径
     let home = std::env::var("HOME").unwrap_or_else(|_| "/Users".to_string());
     let system_path = std::env::var("PATH").unwrap_or_default();
-    
+
     let common_paths = vec![
         format!("{}/bin", home),
         format!("{}/.local/bin", home),
+        format!("{}/.local/share/pnpm", home),
         // nvm
         format!("{}/.nvm/versions/node/*/bin", home),
         // fnm
@@ -85,13 +89,13 @@ fn get_user_shell_path() -> Result<String, String> {
         "/usr/sbin".to_string(),
         "/sbin".to_string(),
     ];
-    
+
     // 过滤存在的路径并与系统 PATH 合并
     let mut paths: Vec<String> = common_paths
         .into_iter()
         .filter(|p| !p.contains("*") && std::path::Path::new(p).exists())
         .collect();
-    
+
     // 特殊处理 nvm（需要查找实际的 node 版本目录）
     let nvm_dir = format!("{}/.nvm/versions/node", home);
     if std::path::Path::new(&nvm_dir).exists() {
@@ -104,17 +108,28 @@ fn get_user_shell_path() -> Result<String, String> {
             }
         }
     }
-    
+
     // 将系统 PATH 中的路径添加到末尾（去重）
     for p in system_path.split(':') {
         if !p.is_empty() && !paths.contains(&p.to_string()) {
             paths.push(p.to_string());
         }
     }
-    
+
     let final_path = paths.join(":");
     println!("[ProcessManager] 使用构建的 PATH 路径");
     Ok(final_path)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn resolve_program_in_user_path(program: &str) -> Option<String> {
+    for dir in USER_PATH.split(':') {
+        let candidate = Path::new(dir).join(program);
+        if candidate.is_file() {
+            return Some(candidate.to_string_lossy().to_string());
+        }
+    }
+    None
 }
 
 pub struct ProcessManager {
@@ -135,7 +150,7 @@ impl ProcessManager {
         {
             let _ = &*USER_PATH;
         }
-        
+
         Self {
             processes: Arc::new(Mutex::new(HashMap::new())),
             window,
@@ -146,6 +161,11 @@ impl ProcessManager {
     #[cfg(target_os = "windows")]
     fn find_npm_command() -> Result<String, String> {
         Ok("npm.cmd".to_string())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn find_pnpm_command() -> Result<String, String> {
+        Ok("pnpm.cmd".to_string())
     }
 
     /// 启动项目
@@ -171,22 +191,28 @@ impl ProcessManager {
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             command.creation_flags(CREATE_NO_WINDOW);
 
-            command.spawn().map_err(|e| format!("启动项目失败: {}", e))?
+            command
+                .spawn()
+                .map_err(|e| format!("启动项目失败: {}", e))?
         };
 
         #[cfg(not(target_os = "windows"))]
         let mut child = {
             // macOS/Linux: 使用缓存的用户 PATH 环境变量
             // 这个 PATH 是从用户的 login shell 获取的，包含了所有全局命令路径
-            let mut command = Command::new("npm");
+            let program_path =
+                resolve_program_in_user_path("npm").unwrap_or_else(|| "npm".to_string());
+            let mut command = Command::new(program_path);
             command
                 .args(&["run", "start"])
                 .current_dir(&project_path)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
-                .env("PATH", &*USER_PATH);  // 使用用户终端的完整 PATH
+                .env("PATH", &*USER_PATH); // 使用用户终端的完整 PATH
 
-            command.spawn().map_err(|e| format!("启动项目失败: {}", e))?
+            command
+                .spawn()
+                .map_err(|e| format!("启动项目失败: {}", e))?
         };
 
         let pid = child.id();
@@ -202,11 +228,15 @@ impl ProcessManager {
             project_path: project_path.clone(),
         };
 
-        self.processes.lock().await.insert(process_id.clone(), handle);
+        self.processes
+            .lock()
+            .await
+            .insert(process_id.clone(), handle);
 
         // 启动日志流任务
         if let Some(stdout) = stdout {
             let process_id_clone = process_id.clone();
+            let project_id_clone = project_id.clone();
             let project_name_clone = project_name.clone();
             let window_clone = self.window.clone();
 
@@ -217,6 +247,7 @@ impl ProcessManager {
                 while let Ok(Some(line)) = lines.next_line().await {
                     let log_msg = LogMessage {
                         process_id: process_id_clone.clone(),
+                        project_id: project_id_clone.clone(),
                         project_name: project_name_clone.clone(),
                         message: line,
                         stream: "stdout".to_string(),
@@ -228,6 +259,7 @@ impl ProcessManager {
 
         if let Some(stderr) = stderr {
             let process_id_clone = process_id.clone();
+            let project_id_clone = project_id.clone();
             let project_name_clone = project_name.clone();
             let window_clone = self.window.clone();
 
@@ -238,6 +270,7 @@ impl ProcessManager {
                 while let Ok(Some(line)) = lines.next_line().await {
                     let log_msg = LogMessage {
                         process_id: process_id_clone.clone(),
+                        project_id: project_id_clone.clone(),
                         project_name: project_name_clone.clone(),
                         message: line,
                         stream: "stderr".to_string(),
@@ -255,6 +288,116 @@ impl ProcessManager {
             started_at: Utc::now(),
             pid: Some(pid),
         })
+    }
+
+    /// 运行项目的快捷任务（等待完成）
+    pub async fn run_task(
+        &self,
+        project_id: String,
+        project_name: String,
+        project_path: String,
+        task: String,
+    ) -> Result<(), String> {
+        let (program, args): (&str, Vec<&str>) = match task.as_str() {
+            "npm_install" => ("npm", vec!["install"]),
+            "pnpm_install" => ("pnpm", vec!["install"]),
+            "npm_deploy" => ("npm", vec!["run", "deploy"]),
+            _ => return Err("不支持的任务类型".to_string()),
+        };
+
+        let process_id = uuid::Uuid::new_v4().to_string();
+
+        #[cfg(target_os = "windows")]
+        let mut command = {
+            let program_name = match program {
+                "npm" => Self::find_npm_command()?,
+                "pnpm" => Self::find_pnpm_command()?,
+                _ => program.to_string(),
+            };
+            let mut cmd = TokioCommand::new(program_name);
+            cmd.args(&args)
+                .current_dir(&project_path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+            cmd
+        };
+
+        #[cfg(not(target_os = "windows"))]
+        let mut command = {
+            let program_path =
+                resolve_program_in_user_path(program).unwrap_or_else(|| program.to_string());
+            let mut cmd = TokioCommand::new(program_path);
+            cmd.args(&args)
+                .current_dir(&project_path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .env("PATH", &*USER_PATH);
+            cmd
+        };
+
+        let mut child = command
+            .spawn()
+            .map_err(|e| format!("执行命令失败: {}", e))?;
+
+        if let Some(stdout) = child.stdout.take() {
+            let process_id_clone = process_id.clone();
+            let project_id_clone = project_id.clone();
+            let project_name_clone = project_name.clone();
+            let window_clone = self.window.clone();
+
+            tokio::spawn(async move {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let log_msg = LogMessage {
+                        process_id: process_id_clone.clone(),
+                        project_id: project_id_clone.clone(),
+                        project_name: project_name_clone.clone(),
+                        message: line,
+                        stream: "stdout".to_string(),
+                    };
+                    let _ = window_clone.emit("process_log", &log_msg);
+                }
+            });
+        }
+
+        if let Some(stderr) = child.stderr.take() {
+            let process_id_clone = process_id.clone();
+            let project_id_clone = project_id.clone();
+            let project_name_clone = project_name.clone();
+            let window_clone = self.window.clone();
+
+            tokio::spawn(async move {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let log_msg = LogMessage {
+                        process_id: process_id_clone.clone(),
+                        project_id: project_id_clone.clone(),
+                        project_name: project_name_clone.clone(),
+                        message: line,
+                        stream: "stderr".to_string(),
+                    };
+                    let _ = window_clone.emit("process_log", &log_msg);
+                }
+            });
+        }
+
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| format!("命令执行失败: {}", e))?;
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("命令退出码 {}", status.code().unwrap_or(-1)))
+        }
     }
 
     /// 停止项目
@@ -299,12 +442,10 @@ impl ProcessManager {
             .output();
 
         match output {
-            Ok(output) => {
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .filter_map(|line| line.trim().parse::<u32>().ok())
-                    .collect()
-            }
+            Ok(output) => String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter_map(|line| line.trim().parse::<u32>().ok())
+                .collect(),
             Err(_) => Vec::new(),
         }
     }

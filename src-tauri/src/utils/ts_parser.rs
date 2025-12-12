@@ -173,13 +173,25 @@ pub fn update_debug_in_ts(content: &str, debug_map: &HashMap<String, String>) ->
 
             // 清理可能遗留的逗号和空行：
             // 1) 连续逗号 -> 单逗号
-            let no_double_commas = Regex::new(r",\s*,").unwrap().replace_all(&result, ",").to_string();
+            let no_double_commas = Regex::new(r",\s*,")
+                .unwrap()
+                .replace_all(&result, ",")
+                .to_string();
             // 2) 左大括号后紧跟逗号 -> 去掉逗号
-            let no_leading_comma = Regex::new(r"\{\s*,").unwrap().replace_all(&no_double_commas, "{\n").to_string();
+            let no_leading_comma = Regex::new(r"\{\s*,")
+                .unwrap()
+                .replace_all(&no_double_commas, "{\n")
+                .to_string();
             // 3) 结尾逗号紧贴右大括号 -> 去掉逗号
-            let no_trailing_comma = Regex::new(r",\s*}").unwrap().replace_all(&no_leading_comma, "\n}").to_string();
+            let no_trailing_comma = Regex::new(r",\s*}")
+                .unwrap()
+                .replace_all(&no_leading_comma, "\n}")
+                .to_string();
             // 4) 压缩多余空行
-            Regex::new(r"\n\s*\n\s*\n+").unwrap().replace_all(&no_trailing_comma, "\n\n").to_string()
+            Regex::new(r"\n\s*\n\s*\n+")
+                .unwrap()
+                .replace_all(&no_trailing_comma, "\n\n")
+                .to_string()
         } else {
             // 替换成新的 debug 块，并根据后续内容决定是否需要逗号
             let before = &content[..mat.start()];
@@ -275,7 +287,10 @@ export default {
 
         let debug = parse_debug_config(content);
         assert_eq!(debug.get("yilu_office"), None);
-        assert_eq!(debug.get("yilu_filing"), Some(&"http://localhost:8633".to_string()));
+        assert_eq!(
+            debug.get("yilu_filing"),
+            Some(&"http://localhost:8633".to_string())
+        );
     }
 
     #[test]
@@ -291,7 +306,10 @@ export default {
 
         let debug = parse_debug_config(content);
         assert_eq!(debug.get("yilu_office"), None);
-        assert_eq!(debug.get("yilu_filing"), Some(&"http://localhost:8633".to_string()));
+        assert_eq!(
+            debug.get("yilu_filing"),
+            Some(&"http://localhost:8633".to_string())
+        );
     }
 
     #[test]
@@ -305,7 +323,10 @@ export default {
 "#;
 
         let debug = parse_debug_config(content);
-        assert_eq!(debug.get("yilu_filing"), Some(&"http://localhost:8633".to_string()));
+        assert_eq!(
+            debug.get("yilu_filing"),
+            Some(&"http://localhost:8633".to_string())
+        );
     }
 
     #[test]
@@ -363,8 +384,14 @@ export default {
     #[test]
     fn update_debug_in_ts_inserts_comma_when_followed_by_other_fields() {
         let mut map = HashMap::new();
-        map.insert("yilu_filing".to_string(), "http://localhost:8633".to_string());
-        map.insert("yilu_office".to_string(), "http://localhost:7010".to_string());
+        map.insert(
+            "yilu_filing".to_string(),
+            "http://localhost:8633".to_string(),
+        );
+        map.insert(
+            "yilu_office".to_string(),
+            "http://localhost:7010".to_string(),
+        );
 
         let content = r#"
 export default {

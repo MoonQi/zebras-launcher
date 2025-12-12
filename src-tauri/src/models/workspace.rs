@@ -1,13 +1,13 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Workspace {
     pub id: String,
     pub name: String,
-    pub root_path: PathBuf,  // 工作区配置文件的存储路径
-    pub folders: Vec<String>,  // 包含的多个代码文件夹路径
+    pub root_path: PathBuf,   // 工作区配置文件的存储路径
+    pub folders: Vec<String>, // 包含的多个代码文件夹路径
     pub created_at: DateTime<Utc>,
     pub last_modified: DateTime<Utc>,
     pub projects: Vec<super::ProjectInfo>,
@@ -46,7 +46,7 @@ impl Workspace {
             id: uuid::Uuid::new_v4().to_string(),
             name,
             root_path,
-            folders: Vec::new(),  // 初始为空，后续添加文件夹
+            folders: Vec::new(), // 初始为空，后续添加文件夹
             created_at: Utc::now(),
             last_modified: Utc::now(),
             projects: Vec::new(),

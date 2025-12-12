@@ -44,8 +44,8 @@ impl ProjectScanner {
             }
 
             // 快速检查：只有包含配置文件的目录才尝试解析
-            let has_config = path.join("zebras.config.ts").exists()
-                || path.join("zebra.json").exists();
+            let has_config =
+                path.join("zebras.config.ts").exists() || path.join("zebra.json").exists();
 
             if !has_config {
                 continue;

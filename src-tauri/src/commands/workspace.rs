@@ -1,5 +1,5 @@
 use crate::models::Workspace;
-use crate::services::{ProjectScanner, WorkspaceService, WorkspaceList, WorkspaceRef};
+use crate::services::{ProjectScanner, WorkspaceList, WorkspaceRef, WorkspaceService};
 use std::path::PathBuf;
 
 #[tauri::command]
@@ -66,7 +66,9 @@ pub async fn load_workspace(workspace_path: String) -> Result<Workspace, String>
 }
 
 #[tauri::command]
-pub async fn scan_workspace_projects(folders: Vec<String>) -> Result<Vec<crate::models::ProjectInfo>, String> {
+pub async fn scan_workspace_projects(
+    folders: Vec<String>,
+) -> Result<Vec<crate::models::ProjectInfo>, String> {
     if folders.is_empty() {
         return Err("工作区文件夹列表为空".to_string());
     }
@@ -75,7 +77,10 @@ pub async fn scan_workspace_projects(folders: Vec<String>) -> Result<Vec<crate::
 }
 
 #[tauri::command]
-pub async fn add_workspace_folder(mut workspace: Workspace, folder_path: String) -> Result<Workspace, String> {
+pub async fn add_workspace_folder(
+    mut workspace: Workspace,
+    folder_path: String,
+) -> Result<Workspace, String> {
     let path = PathBuf::from(&folder_path);
 
     if !path.exists() || !path.is_dir() {
@@ -94,7 +99,10 @@ pub async fn add_workspace_folder(mut workspace: Workspace, folder_path: String)
 }
 
 #[tauri::command]
-pub async fn remove_workspace_folder(mut workspace: Workspace, folder_path: String) -> Result<Workspace, String> {
+pub async fn remove_workspace_folder(
+    mut workspace: Workspace,
+    folder_path: String,
+) -> Result<Workspace, String> {
     workspace.remove_folder(&folder_path);
 
     // 重新扫描所有文件夹

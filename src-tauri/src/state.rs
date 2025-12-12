@@ -1,8 +1,8 @@
+use crate::models::{ProcessInfo, Workspace};
+use crate::services::ProcessManager;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use std::collections::HashMap;
-use crate::models::{Workspace, ProcessInfo};
-use crate::services::ProcessManager;
 
 pub struct AppState {
     pub current_workspace: Arc<Mutex<Option<Workspace>>>,

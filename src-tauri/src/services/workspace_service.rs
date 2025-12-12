@@ -7,14 +7,12 @@ pub struct WorkspaceService;
 impl WorkspaceService {
     /// 获取工作区配置目录
     fn get_workspaces_dir() -> Result<PathBuf, String> {
-        let home = dirs_next::home_dir()
-            .ok_or("无法获取用户主目录".to_string())?;
+        let home = dirs_next::home_dir().ok_or("无法获取用户主目录".to_string())?;
 
         let workspaces_dir = home.join(".zebras-launcher").join("workspaces");
 
         // 确保目录存在
-        fs::create_dir_all(&workspaces_dir)
-            .map_err(|e| format!("创建工作区目录失败: {}", e))?;
+        fs::create_dir_all(&workspaces_dir).map_err(|e| format!("创建工作区目录失败: {}", e))?;
 
         Ok(workspaces_dir)
     }
@@ -31,11 +29,10 @@ impl WorkspaceService {
             return Err("工作区文件不存在".to_string());
         }
 
-        let content = fs::read_to_string(workspace_path)
-            .map_err(|e| format!("读取工作区文件失败: {}", e))?;
+        let content =
+            fs::read_to_string(workspace_path).map_err(|e| format!("读取工作区文件失败: {}", e))?;
 
-        serde_json::from_str(&content)
-            .map_err(|e| format!("解析工作区配置失败: {}", e))
+        serde_json::from_str(&content).map_err(|e| format!("解析工作区配置失败: {}", e))
     }
 
     /// 保存工作区配置到用户目录
@@ -45,8 +42,7 @@ impl WorkspaceService {
         let json = serde_json::to_string_pretty(workspace)
             .map_err(|e| format!("序列化工作区配置失败: {}", e))?;
 
-        fs::write(&workspace_file, json)
-            .map_err(|e| format!("写入工作区文件失败: {}", e))?;
+        fs::write(&workspace_file, json).map_err(|e| format!("写入工作区文件失败: {}", e))?;
 
         Ok(())
     }
@@ -56,8 +52,7 @@ impl WorkspaceService {
         let workspace_path = Self::get_workspace_config_path(workspace_id)?;
 
         if workspace_path.exists() {
-            fs::remove_file(workspace_path)
-                .map_err(|e| format!("删除工作区文件失败: {}", e))?;
+            fs::remove_file(workspace_path).map_err(|e| format!("删除工作区文件失败: {}", e))?;
         }
         Ok(())
     }

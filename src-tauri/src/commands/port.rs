@@ -1,4 +1,4 @@
-use crate::models::{ProjectInfo, PortChange};
+use crate::models::{PortChange, ProjectInfo};
 use crate::services::{PortManager, WorkspaceList, WorkspaceService};
 use crate::utils::port_checker::is_port_available;
 use std::collections::HashSet;
@@ -53,10 +53,7 @@ fn collect_global_used_ports(current_workspace_id: &str) -> Result<HashSet<u16>,
     for workspace_ref in workspace_list.workspaces.iter() {
         // 跳过当前工作区
         if workspace_ref.id == current_workspace_id {
-            println!(
-                "[PortManager] 跳过当前工作区 '{}'",
-                workspace_ref.name
-            );
+            println!("[PortManager] 跳过当前工作区 '{}'", workspace_ref.name);
             continue;
         }
 

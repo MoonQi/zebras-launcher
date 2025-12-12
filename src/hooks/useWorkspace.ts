@@ -58,9 +58,23 @@ export function useWorkspace() {
       setError(null);
 
       const projects = await scanWorkspaceProjects(workspace.folders);
+      const normalizePath = (p: string) => p.replace(/\\/g, '/');
+      const previousByPath = new Map(
+        workspace.projects.map((p) => [normalizePath(p.path), p])
+      );
+
+      const mergedProjects = projects.map((project) => {
+        const prev = previousByPath.get(normalizePath(project.path));
+        return {
+          ...project,
+          id: prev?.id ?? project.id,
+          enabled: prev?.enabled ?? project.enabled,
+        };
+      });
+
       const updatedWorkspace = {
         ...workspace,
-        projects,
+        projects: mergedProjects,
         last_modified: new Date().toISOString(),
       };
 

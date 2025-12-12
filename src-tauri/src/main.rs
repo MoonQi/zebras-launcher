@@ -43,23 +43,20 @@ fn main() {
             commands::remove_workspace_folder,
             commands::get_workspace_list,
             commands::update_project_enabled,
-
             // Port commands
             commands::check_port_available,
             commands::resolve_port_conflicts,
-
             // Project commands
             commands::get_project_details,
             commands::rescan_project,
             commands::is_zebras_project,
-
             // Process commands
             commands::start_project,
             commands::stop_project,
             commands::get_running_processes,
             commands::stop_all_projects,
             commands::start_all_projects,
-
+            commands::run_project_task,
             // Debug commands
             commands::update_debug_config,
         ])

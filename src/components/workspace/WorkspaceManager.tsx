@@ -7,6 +7,7 @@ interface WorkspaceManagerProps {
   onDeleteWorkspace: () => void;
   onRescan: () => void;
   onResolveConflicts: () => void;
+  onOpenDependencyGraph: () => void;
   onAddFolder: () => void;
   onRemoveFolder: (folderPath: string) => void;
   onStartAll: () => void;
@@ -21,6 +22,7 @@ export function WorkspaceManager({
   onDeleteWorkspace,
   onRescan,
   onResolveConflicts,
+  onOpenDependencyGraph,
   onAddFolder,
   onRemoveFolder,
   onStartAll,
@@ -190,6 +192,10 @@ export function WorkspaceManager({
 
             <button onClick={onResolveConflicts} disabled={loading} className="btn btn-secondary">
               解决端口冲突
+            </button>
+
+            <button onClick={onOpenDependencyGraph} disabled={loading} className="btn btn-secondary">
+              依赖图
             </button>
           </div>
         </div>

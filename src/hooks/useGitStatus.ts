@@ -38,9 +38,18 @@ export function useGitStatus(projects: ProjectInfo[], settings: AppSettings) {
 
   const prevBehindByProjectId = useRef<Map<string, number>>(new Map());
 
+  // Only re-initialize / refresh git status when the git-relevant identity of projects changes.
+  // (e.g. bulk-start enabled toggle should not cause a git refresh.)
+  const projectsKey = useMemo(() => {
+    return projects
+      .map((p) => `${p.id}::${p.path}::${p.is_valid ? 1 : 0}`)
+      .sort()
+      .join('|');
+  }, [projects]);
+
   const repoProjects = useMemo(() => {
     return projects.filter((p) => p.is_valid);
-  }, [projects]);
+  }, [projectsKey]);
 
   const setBusy = useCallback((projectId: string, updates: Partial<GitBusyState>) => {
     setGitBusyByProjectId((prev) => {
@@ -135,11 +144,32 @@ export function useGitStatus(projects: ProjectInfo[], settings: AppSettings) {
   );
 
   useEffect(() => {
-    setGitStatuses(new Map());
-    prevBehindByProjectId.current = new Map();
-    setGitDisabledReason(null);
-    refreshAll();
-  }, [projects, refreshAll]);
+    const currentIds = new Set(projects.map((p) => p.id));
+
+    setGitStatuses((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Map<string, GitStatus | null>();
+      prev.forEach((value, key) => {
+        if (currentIds.has(key)) next.set(key, value);
+      });
+      return next;
+    });
+
+    setGitBusyByProjectId((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Map<string, GitBusyState>();
+      prev.forEach((value, key) => {
+        if (currentIds.has(key)) next.set(key, value);
+      });
+      return next;
+    });
+
+    prevBehindByProjectId.current = new Map(
+      Array.from(prevBehindByProjectId.current.entries()).filter(([id]) => currentIds.has(id))
+    );
+
+    void refreshAll();
+  }, [projectsKey, refreshAll]);
 
   useEffect(() => {
     if (gitDisabledReason) return;
@@ -163,4 +193,3 @@ export function useGitStatus(projects: ProjectInfo[], settings: AppSettings) {
     pullProject,
   };
 }
-

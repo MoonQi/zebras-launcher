@@ -13,7 +13,8 @@
   "dependencies": {
     "@tauri-apps/api": "^1.5.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "reactflow": "^11.11.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.17",

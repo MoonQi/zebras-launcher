@@ -227,7 +227,7 @@ export function ProjectCard({
     };
   };
 
-   const getTypeDisplayName = (version: string, type: string) => {
+  const getTypeDisplayName = (version: string, type: string) => {
     if (version === 'v3') {
       const map: Record<string, string> = { base: '主应用', app: '子应用', lib: '组件' };
       return map[type] || type;
@@ -238,6 +238,49 @@ export function ProjectCard({
     return type;
   };
 
+  const toggleLogs = () => {
+    setShowLogs(prev => {
+      const next = !prev;
+      if (next) setFollowLogs(true);
+      return next;
+    });
+  };
+
+  const terminalIcon = (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 17l6-6-6-6" />
+      <path d="M12 19h8" />
+    </svg>
+  );
+
+  const logsIcon = (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 4h16v16H4z" />
+      <path d="M8 8h8" />
+      <path d="M8 12h8" />
+      <path d="M8 16h6" />
+    </svg>
+  );
 
   return (
     <div
@@ -252,10 +295,10 @@ export function ProjectCard({
       }}
     >
       {/* Header Section */}
-      <div className="flex justify-between items-start mb-md" style={{ paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div className="flex flex-col gap-xs">
-          <div className="flex items-center gap-sm">
-            <h3 
+      <div className="flex items-start mb-md" style={{ paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="flex flex-col gap-xs w-full">
+          <div className="flex justify-between items-center gap-sm">
+            <h4
               className="m-0 text-lg font-semibold" 
               style={{ 
                 color: 'var(--color-text-main)',
@@ -267,7 +310,7 @@ export function ProjectCard({
               onMouseLeave={(e) => project.port && (e.currentTarget.style.color = 'var(--color-text-main)')}
             >
               {project.name}
-            </h3>
+            </h4>
             {isRunning && (
               <span 
                 className="text-xs flex items-center gap-1"
@@ -283,62 +326,6 @@ export function ProjectCard({
                 Running
               </span>
             )}
-          </div>
-          <div className="flex gap-xs mt-xs">
-             <span className="badge" style={getVersionBadgeStyle(project.version)}>
-              {project.version.toUpperCase()}
-            </span>
-            <span className="badge" style={getTypeBadgeStyle(project.type)}>
-              {getTypeDisplayName(project.version, project.type)}
-            </span>
-            {gitStatus ? (
-            <>
-              {gitStatus.branch && (
-                <span
-                  className="badge"
-                  style={{
-                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                    color: 'rgba(34, 197, 94, 0.95)',
-                    border: '1px solid rgba(34, 197, 94, 0.25)',
-                  }}
-                >
-                  🌿 {gitStatus.branch}
-                </span>
-              )}
-              {gitStatus.uncommitted_count > 0 && (
-                <span
-                  className="badge"
-                  style={{
-                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                    color: 'rgba(245, 158, 11, 0.95)',
-                    border: '1px solid rgba(245, 158, 11, 0.25)',
-                  }}
-                  title="未提交更改"
-                >
-                  ✎{gitStatus.uncommitted_count}
-                </span>
-              )}
-              {gitStatus.has_remote && gitStatus.behind_count > 0 && (
-                <span
-                  className="badge"
-                  style={{
-                    backgroundColor: 'rgba(96, 165, 250, 0.1)',
-                    color: 'rgba(96, 165, 250, 0.95)',
-                    border: '1px solid rgba(96, 165, 250, 0.25)',
-                  }}
-                  title="可拉取更新"
-                >
-                  ↓{gitStatus.behind_count} 可拉取
-                </span>
-              )}
-            </>
-          ) : null}
-          </div>
-
-         
-        </div>
-
-        <div className="flex flex-col items-end gap-sm">
            {project.is_valid && (
             <label 
               className="flex items-center gap-1 text-xs text-secondary cursor-pointer" 
@@ -353,7 +340,66 @@ export function ProjectCard({
               <span>批量启动</span>
             </label>
           )}
+          </div>
+          <div className="project-card__meta mt-xs">
+            <div className="project-card__badges">
+              <span className="badge" style={getVersionBadgeStyle(project.version)}>
+              {project.version.toUpperCase()}
+              </span>
+              <span className="badge" style={getTypeBadgeStyle(project.type)}>
+              {getTypeDisplayName(project.version, project.type)}
+              </span>
+            </div>
+
+            {gitStatus ? (
+              <div className="project-card__badges project-card__badges--right">
+                {gitStatus.branch && (
+                  <span
+                    className="badge project-card__badge--truncate"
+                    style={{
+                      backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                      color: 'rgba(34, 197, 94, 0.95)',
+                      border: '1px solid rgba(34, 197, 94, 0.25)',
+                    }}
+                    title={`分支: ${gitStatus.branch}`}
+                  >
+                    ⎇ {gitStatus.branch}
+                  </span>
+                )}
+                {gitStatus.uncommitted_count > 0 && (
+                  <span
+                    className="badge"
+                    style={{
+                      backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                      color: 'rgba(245, 158, 11, 0.95)',
+                      border: '1px solid rgba(245, 158, 11, 0.25)',
+                    }}
+                    title="未提交更改"
+                  >
+                    ✎ {gitStatus.uncommitted_count}
+                  </span>
+                )}
+                {gitStatus.has_remote && (gitStatus.ahead_count > 0 || gitStatus.behind_count > 0) && (
+                  <span
+                    className="badge"
+                    style={{
+                      backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                      color: 'rgba(96, 165, 250, 0.95)',
+                      border: '1px solid rgba(96, 165, 250, 0.25)',
+                    }}
+                    title="与远端差异"
+                  >
+                    ↑{gitStatus.ahead_count} ↓{gitStatus.behind_count}
+                  </span>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+         
         </div>
+
+  
       </div>
 
       {/* Info Grid */}
@@ -400,19 +446,19 @@ export function ProjectCard({
           )}
        </div>
 
-      {/* Actions Footer */}
-      {project.is_valid && (
-        <div className="mt-auto" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div className="flex gap-sm flex-wrap">
-            <button
-              onClick={isRunning ? handleStop : handleStart}
-              disabled={isStarting}
-              className={`btn flex-1 ${isRunning ? 'btn-danger' : 'btn-success'}`}
-              style={{ fontWeight: 600 }}
-            >
-              {isStarting ? (
-                 <>
-                  <span className="animate-spin" style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid currentColor', borderTopColor: 'transparent' }}></span>
+	      {/* Actions Footer */}
+	      {project.is_valid && (
+	        <div className="mt-auto project-card__actions">
+	          <div className="project-card__actions-main">
+	            <button
+	              onClick={isRunning ? handleStop : handleStart}
+	              disabled={isStarting}
+	              className={`btn project-card__btn-primary ${isRunning ? 'btn-danger' : 'btn-success'}`}
+	              style={{ fontWeight: 600 }}
+	            >
+	              {isStarting ? (
+	                 <>
+	                  <span className="animate-spin" style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid currentColor', borderTopColor: 'transparent' }}></span>
                   {isRunning ? '停止中...' : '启动中...'}
                 </>
               ) : isRunning ? '停止运行' : '启动项目'}
@@ -427,78 +473,80 @@ export function ProjectCard({
                 title="重启项目"
               >
                 重启
-              </button>
-            )}
-            
-            <button
-              onClick={() => setShowDebugConfig(!showDebugConfig)}
-              className={`btn ${showDebugConfig ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '0.5rem' }}
-              title="调试依赖配置"
-            >
-               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
-             
-             {(isRunning || logs.length > 0) && (
-              <button
-                onClick={() => setShowLogs(prev => {
-                  const next = !prev;
-                  if (next) setFollowLogs(true);
-                  return next;
-                })}
-                className={`btn ${showLogs ? 'btn-secondary' : 'btn-ghost'}`}
-                style={{ padding: '0.5rem', borderColor: showLogs ? 'var(--color-border)' : 'transparent', backgroundColor: showLogs ? 'var(--color-surface-hover)' : 'transparent' }}
-                title="查看日志"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
-              </button>
-            )}
+	              </button>
+	            )}
+	          </div>
 
-            <button
-              onClick={() => setShowTerminal((prev) => !prev)}
-              className={`btn ${showTerminal ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '0.5rem' }}
-              title="终端"
-            >
-              终端
-            </button>
-          </div>
+	          <div className="project-card__actions-tools">
+	            <div className="project-card__actions-icons">
+	              <button
+	                onClick={() => setShowDebugConfig(!showDebugConfig)}
+	                className={`btn project-card__icon-btn ${showDebugConfig ? 'btn-primary' : 'btn-secondary'}`}
+	                title="调试依赖配置"
+	                aria-label="调试依赖配置"
+	              >
+	                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+	              </button>
+	             
+	              {(isRunning || logs.length > 0) && (
+	                <button
+	                  onClick={toggleLogs}
+	                  className={`btn project-card__icon-btn ${showLogs ? 'btn-secondary' : 'btn-ghost'}`}
+	                  style={{ borderColor: showLogs ? 'var(--color-border)' : 'transparent', backgroundColor: showLogs ? 'var(--color-surface-hover)' : 'transparent' }}
+	                  title="查看日志"
+	                  aria-label="查看日志"
+	                >
+	                  {logsIcon}
+	                </button>
+	              )}
 
-          {gitStatus && !gitDisabledReason && (
-            <div className="flex gap-xs flex-wrap items-center">
-              <button
-                onClick={handleGitFetch}
-                disabled={isStarting || gitBusy?.fetching || gitBusy?.pulling}
-                className={`btn ${gitBusy?.fetching ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.35rem 0.75rem' }}
-              >
-                {gitBusy?.fetching ? 'Fetch 中...' : 'Fetch'}
-              </button>
-              <button
+	              <button
+	                onClick={() => setShowTerminal((prev) => !prev)}
+	                className={`btn project-card__icon-btn ${showTerminal ? 'btn-primary' : 'btn-secondary'}`}
+	                title="终端"
+	                aria-label="终端"
+	              >
+	                {terminalIcon}
+	              </button>
+	            </div>
+
+	            {gitStatus && !gitDisabledReason && (
+	              <div className="project-card__actions-git">
+	              <button
+	                onClick={handleGitFetch}
+	                disabled={isStarting || gitBusy?.fetching || gitBusy?.pulling}
+	                className={`btn btn-sm ${gitBusy?.fetching ? 'btn-primary' : 'btn-secondary'}`}
+	              >
+	                {gitBusy?.fetching ? 'Fetch 中...' : 'Fetch'}
+	              </button>
+	              <button
                 onClick={handleGitPull}
                 disabled={
                   isStarting ||
                   gitBusy?.fetching ||
                   gitBusy?.pulling ||
                   !gitStatus.has_remote ||
-                  gitStatus.uncommitted_count > 0
-                }
-                className={`btn ${gitBusy?.pulling ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.35rem 0.75rem' }}
-                title={gitStatus.uncommitted_count > 0 ? '存在未提交更改，已禁用 Pull' : 'Pull（ff-only）'}
-              >
-                {gitBusy?.pulling ? 'Pull 中...' : 'Pull'}
-              </button>
-              {gitStatus.uncommitted_count > 0 && (
-                <span className="text-xs text-muted">有未提交更改，已禁用 Pull</span>
-              )}
-            </div>
-          )}
+	                  gitStatus.uncommitted_count > 0
+	                }
+	                className={`btn btn-sm ${gitBusy?.pulling ? 'btn-primary' : 'btn-secondary'}`}
+	                title={gitStatus.uncommitted_count > 0 ? '存在未提交更改，已禁用 Pull' : 'Pull（ff-only）'}
+	              >
+	                {gitBusy?.pulling ? 'Pull 中...' : 'Pull'}
+	              </button>
+	              </div>
+	            )}
+	          </div>
 
-          {/* Debug Configuration Panel */}
-          {showDebugConfig && (
-             <div style={{ 
-               backgroundColor: 'rgba(0,0,0,0.2)', 
+	          {gitStatus && gitDisabledReason && (
+	            <div className="text-xs text-muted" title={gitDisabledReason}>
+	              Git 功能已禁用：{gitDisabledReason}
+	            </div>
+	          )}
+
+	          {/* Debug Configuration Panel */}
+	          {showDebugConfig && (
+	             <div style={{ 
+	               backgroundColor: 'rgba(0,0,0,0.2)', 
                borderRadius: 'var(--radius-md)', 
                padding: '12px', 
                border: '1px solid var(--color-border)' 

@@ -5,7 +5,8 @@ import { useGitStatus } from './hooks/useGitStatus';
 import { WorkspaceManager } from './components/workspace/WorkspaceManager';
 import { ProjectGrid } from './components/workspace/ProjectGrid';
 import { SettingsPanel } from './components/settings/SettingsPanel';
-import { getWorkspaceList, loadWorkspace, deleteWorkspace, startAllProjects, stopProject } from './services/tauri';
+import { DependencyGraphModal } from './components/workspace/DependencyGraphModal';
+import { getWorkspaceList, loadWorkspace, deleteWorkspace, startAllProjects, startProject, stopProject } from './services/tauri';
 import type { PortChange, WorkspaceRef, ProcessInfo } from './types';
 
 function App() {
@@ -28,6 +29,7 @@ function App() {
   const [loadingList, setLoadingList] = useState(false);
   const [runningProcesses, setRunningProcesses] = useState<Map<string, ProcessInfo>>(new Map());
   const [showSettings, setShowSettings] = useState(false);
+  const [showDependencyGraph, setShowDependencyGraph] = useState(false);
 
   const { settings, updateSettings, resetSettings } = useAppSettings();
   const { gitStatuses, gitBusyByProjectId, gitDisabledReason, fetchProject, pullProject } = useGitStatus(
@@ -136,6 +138,73 @@ function App() {
       newMap.delete(projectId);
       return newMap;
     });
+  };
+
+  const restartRunningProjects = async (projectIds: string[]) => {
+    if (!workspace) return;
+    const uniqueIds = Array.from(new Set(projectIds));
+    const projectsById = new Map(workspace.projects.map((p) => [p.id, p]));
+
+    const running = uniqueIds
+      .map((id) => {
+        const proc = runningProcesses.get(id);
+        const project = projectsById.get(id);
+        if (!proc || !project) return null;
+        return { proc, project };
+      })
+      .filter((v): v is { proc: ProcessInfo; project: (typeof workspace.projects)[number] } => Boolean(v));
+
+    if (running.length === 0) return;
+
+    setError(null);
+
+    const stopResults = await Promise.allSettled(running.map(({ proc }) => stopProject(proc.process_id)));
+    const stoppedIds: string[] = [];
+    const stopFailed: string[] = [];
+    stopResults.forEach((r, idx) => {
+      const { project } = running[idx];
+      if (r.status === 'fulfilled') stoppedIds.push(project.id);
+      else stopFailed.push(`${project.name}: ${String(r.reason)}`);
+    });
+
+    if (stoppedIds.length > 0) {
+      setRunningProcesses((prev) => {
+        const next = new Map(prev);
+        stoppedIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
+
+    if (stopFailed.length > 0) {
+      setError(`以下项目停止失败：${stopFailed.join('; ')}`);
+      alert(`部分项目未能停止（${stopFailed.length} 个）。`);
+      return;
+    }
+
+    const startResults = await Promise.allSettled(
+      running.map(({ project }) => startProject(project.id, project.name, project.path))
+    );
+
+    const started: ProcessInfo[] = [];
+    const startFailed: string[] = [];
+    startResults.forEach((r, idx) => {
+      const { project } = running[idx];
+      if (r.status === 'fulfilled') started.push(r.value);
+      else startFailed.push(`${project.name}: ${String(r.reason)}`);
+    });
+
+    if (started.length > 0) {
+      setRunningProcesses((prev) => {
+        const next = new Map(prev);
+        started.forEach((proc) => next.set(proc.project_id, proc));
+        return next;
+      });
+    }
+
+    if (startFailed.length > 0) {
+      setError(`以下项目启动失败：${startFailed.join('; ')}`);
+      alert(`部分项目未能启动（${startFailed.length} 个）。`);
+    }
   };
 
   const handleStopAll = async () => {
@@ -336,6 +405,7 @@ function App() {
         onDeleteWorkspace={handleDeleteWorkspace}
         onRescan={handleRescan}
         onResolveConflicts={handleResolveConflicts}
+        onOpenDependencyGraph={() => setShowDependencyGraph(true)}
         onAddFolder={addFolder}
         onRemoveFolder={removeFolder}
         onStartAll={handleStartAll}
@@ -343,6 +413,16 @@ function App() {
         loading={loading}
         allProjectsRunning={allProjectsRunning}
       />
+
+      {showDependencyGraph && workspace && (
+        <DependencyGraphModal
+          projects={workspace.projects}
+          runningProcesses={runningProcesses}
+          onClose={() => setShowDependencyGraph(false)}
+          onDebugConfigSaved={handleDebugConfigChange}
+          onRestartRunningProjects={restartRunningProjects}
+        />
+      )}
 
       {/* 项目网格 */}
       {workspace && (

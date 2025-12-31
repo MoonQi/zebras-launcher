@@ -1,5 +1,14 @@
 import { invoke } from '@tauri-apps/api/tauri';
-import type { Workspace, WorkspaceRef, ProjectInfo, PortChange, ProcessInfo } from '../types';
+import type {
+  Workspace,
+  WorkspaceRef,
+  ProjectInfo,
+  PortChange,
+  ProcessInfo,
+  TerminalSession,
+  GitStatus,
+  GitPullResult,
+} from '../types';
 
 // Workspace APIs
 export async function createWorkspace(name: string, folders: string[]): Promise<Workspace> {
@@ -106,6 +115,48 @@ export async function runProjectTask(
   task: 'npm_install' | 'pnpm_install' | 'npm_deploy'
 ): Promise<void> {
   return invoke('run_project_task', { projectId, projectName, projectPath, task });
+}
+
+// Terminal APIs
+export async function createTerminalSession(projectId: string): Promise<TerminalSession> {
+  return invoke('create_terminal_session', { projectId });
+}
+
+export async function getTerminalSessions(projectId: string): Promise<TerminalSession[]> {
+  return invoke('get_terminal_sessions', { projectId });
+}
+
+export async function runTerminalCommand(
+  sessionId: string,
+  projectPath: string,
+  command: string
+): Promise<void> {
+  return invoke('run_terminal_command', { sessionId, projectPath, command });
+}
+
+export async function killTerminalSession(sessionId: string): Promise<void> {
+  return invoke('kill_terminal_session', { sessionId });
+}
+
+export async function closeTerminalSession(sessionId: string): Promise<void> {
+  return invoke('close_terminal_session', { sessionId });
+}
+
+// Git APIs
+export async function isGitRepo(path: string): Promise<boolean> {
+  return invoke('is_git_repo', { path });
+}
+
+export async function getGitStatus(path: string): Promise<GitStatus> {
+  return invoke('get_git_status', { path });
+}
+
+export async function gitFetch(path: string): Promise<GitStatus> {
+  return invoke('git_fetch', { path });
+}
+
+export async function gitPull(path: string): Promise<GitPullResult> {
+  return invoke('git_pull', { path });
 }
 
 // Debug APIs

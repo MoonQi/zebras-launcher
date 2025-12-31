@@ -1,5 +1,5 @@
 import { ProjectCard } from '../project/ProjectCard';
-import type { ProjectInfo, ProcessInfo, Workspace } from '../../types';
+import type { GitPullResult, GitStatus, ProjectInfo, ProcessInfo, Workspace } from '../../types';
 
 interface ProjectGridProps {
   projects: ProjectInfo[];
@@ -9,9 +9,26 @@ interface ProjectGridProps {
   onDebugConfigChange: () => void; // 调试配置变更回调
   workspace: Workspace; // 添加 workspace 参数
   onWorkspaceUpdate: (workspace: Workspace) => void; // 工作区更新回调
+  gitStatuses: Map<string, GitStatus | null>;
+  gitBusyByProjectId: Map<string, { fetching: boolean; pulling: boolean }>;
+  gitDisabledReason: string | null;
+  onGitFetch: (project: ProjectInfo) => Promise<void>;
+  onGitPull: (project: ProjectInfo) => Promise<GitPullResult | null>;
 }
 
-export function ProjectGrid({ projects, runningProcesses, onProcessStart, onProcessStop, workspace, onWorkspaceUpdate }: ProjectGridProps) {
+export function ProjectGrid({
+  projects,
+  runningProcesses,
+  onProcessStart,
+  onProcessStop,
+  workspace,
+  onWorkspaceUpdate,
+  gitStatuses,
+  gitBusyByProjectId,
+  gitDisabledReason,
+  onGitFetch,
+  onGitPull,
+}: ProjectGridProps) {
   if (projects.length === 0) {
     return (
       <div className="text-center py-xl text-secondary">
@@ -78,6 +95,11 @@ export function ProjectGrid({ projects, runningProcesses, onProcessStart, onProc
             allProjects={projects}
             workspace={workspace}
             onWorkspaceUpdate={onWorkspaceUpdate}
+            gitStatus={gitStatuses.get(project.id)}
+            gitBusy={gitBusyByProjectId.get(project.id)}
+            gitDisabledReason={gitDisabledReason}
+            onGitFetch={onGitFetch}
+            onGitPull={onGitPull}
           />
         ))}
       </div>

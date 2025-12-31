@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/api/shell';
-import type { ProjectInfo, ProcessInfo, LogMessage, Workspace } from '../../types';
-import { runProjectTask, startProject, stopProject, updateDebugConfig, updateProjectEnabled } from '../../services/tauri';
+import type { ProjectInfo, ProcessInfo, LogMessage, Workspace, GitPullResult, GitStatus } from '../../types';
+import { startProject, stopProject, updateDebugConfig, updateProjectEnabled } from '../../services/tauri';
+import { TerminalPanel } from './TerminalPanel';
 
 interface ProjectCardProps {
   project: ProjectInfo;
@@ -12,25 +13,35 @@ interface ProjectCardProps {
   allProjects: ProjectInfo[];
   workspace: Workspace;
   onWorkspaceUpdate: (workspace: Workspace) => void;
+  gitStatus?: GitStatus | null;
+  gitBusy?: { fetching: boolean; pulling: boolean };
+  gitDisabledReason?: string | null;
+  onGitFetch: (project: ProjectInfo) => Promise<void>;
+  onGitPull: (project: ProjectInfo) => Promise<GitPullResult | null>;
 }
 
-type QuickTask = 'npm_install' | 'pnpm_install' | 'npm_deploy';
-
-const QUICK_TASK_LABELS: Record<QuickTask, string> = {
-  npm_install: 'npm install',
-  pnpm_install: 'pnpm install',
-  npm_deploy: 'npm run deploy',
-};
-
-export function ProjectCard({ project, processInfo, onProcessStart, onProcessStop, allProjects, workspace, onWorkspaceUpdate }: ProjectCardProps) {
+export function ProjectCard({
+  project,
+  processInfo,
+  onProcessStart,
+  onProcessStop,
+  allProjects,
+  workspace,
+  onWorkspaceUpdate,
+  gitStatus,
+  gitBusy,
+  gitDisabledReason,
+  onGitFetch,
+  onGitPull,
+}: ProjectCardProps) {
   const [isStarting, setIsStarting] = useState(false);
   const [logs, setLogs] = useState<LogMessage[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const [followLogs, setFollowLogs] = useState(true);
   const [showDebugConfig, setShowDebugConfig] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
   const [debugConfig, setDebugConfig] = useState<Record<string, string>>(project.debug || {});
   const [selectedProject, setSelectedProject] = useState<string>('');
-  const [quickTask, setQuickTask] = useState<QuickTask | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -157,47 +168,24 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
     }
   };
 
-  const handleRunTask = async (task: QuickTask) => {
+  const handleGitFetch = async () => {
     try {
-      setQuickTask(task);
-      setShowLogs(true);
-      setFollowLogs(true);
-      setLogs(prev => [
-        ...prev,
-        {
-          process_id: `task-${Date.now()}`,
-          project_id: project.id,
-          project_name: project.name,
-          message: `开始执行 ${QUICK_TASK_LABELS[task]}`,
-          stream: 'stdout',
-        },
-      ]);
-      await runProjectTask(project.id, project.name, project.path, task);
-      setLogs(prev => [
-        ...prev,
-        {
-          process_id: `task-${Date.now()}`,
-          project_id: project.id,
-          project_name: project.name,
-          message: `${QUICK_TASK_LABELS[task]} 完成`,
-          stream: 'stdout',
-        },
-      ]);
+      await onGitFetch(project);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setLogs(prev => [
-        ...prev,
-        {
-          process_id: `task-${Date.now()}`,
-          project_id: project.id,
-          project_name: project.name,
-          message: `任务失败: ${message}`,
-          stream: 'stderr',
-        },
-      ]);
-      alert(`执行命令失败: ${message}`);
-    } finally {
-      setQuickTask(null);
+      alert(`Git Fetch 失败: ${message}`);
+    }
+  };
+
+  const handleGitPull = async () => {
+    try {
+      const result = await onGitPull(project);
+      if (result && !result.success) {
+        alert(result.message);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Git Pull 失败: ${message}`);
     }
   };
 
@@ -303,7 +291,51 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
             <span className="badge" style={getTypeBadgeStyle(project.type)}>
               {getTypeDisplayName(project.version, project.type)}
             </span>
+            {gitStatus ? (
+            <>
+              {gitStatus.branch && (
+                <span
+                  className="badge"
+                  style={{
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    color: 'rgba(34, 197, 94, 0.95)',
+                    border: '1px solid rgba(34, 197, 94, 0.25)',
+                  }}
+                >
+                  🌿 {gitStatus.branch}
+                </span>
+              )}
+              {gitStatus.uncommitted_count > 0 && (
+                <span
+                  className="badge"
+                  style={{
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    color: 'rgba(245, 158, 11, 0.95)',
+                    border: '1px solid rgba(245, 158, 11, 0.25)',
+                  }}
+                  title="未提交更改"
+                >
+                  ✎{gitStatus.uncommitted_count}
+                </span>
+              )}
+              {gitStatus.has_remote && gitStatus.behind_count > 0 && (
+                <span
+                  className="badge"
+                  style={{
+                    backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                    color: 'rgba(96, 165, 250, 0.95)',
+                    border: '1px solid rgba(96, 165, 250, 0.25)',
+                  }}
+                  title="可拉取更新"
+                >
+                  ↓{gitStatus.behind_count} 可拉取
+                </span>
+              )}
+            </>
+          ) : null}
           </div>
+
+         
         </div>
 
         <div className="flex flex-col items-end gap-sm">
@@ -421,34 +453,47 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
               </button>
             )}
+
+            <button
+              onClick={() => setShowTerminal((prev) => !prev)}
+              className={`btn ${showTerminal ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '0.5rem' }}
+              title="终端"
+            >
+              终端
+            </button>
           </div>
 
-          <div className="flex gap-xs flex-wrap">
-            <button
-              onClick={() => handleRunTask('npm_install')}
-              disabled={!!quickTask || isStarting}
-              className={`btn ${quickTask === 'npm_install' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '0.35rem 0.75rem' }}
-            >
-              {quickTask === 'npm_install' ? 'npm i 中...' : 'npm i'}
-            </button>
-            <button
-              onClick={() => handleRunTask('pnpm_install')}
-              disabled={!!quickTask || isStarting}
-              className={`btn ${quickTask === 'pnpm_install' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '0.35rem 0.75rem' }}
-            >
-              {quickTask === 'pnpm_install' ? 'pnpm i 中...' : 'pnpm i'}
-            </button>
-            <button
-              onClick={() => handleRunTask('npm_deploy')}
-              disabled={!!quickTask || isStarting}
-              className={`btn ${quickTask === 'npm_deploy' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '0.35rem 0.75rem' }}
-            >
-              {quickTask === 'npm_deploy' ? 'deploy 中...' : 'npm run deploy'}
-            </button>
-          </div>
+          {gitStatus && !gitDisabledReason && (
+            <div className="flex gap-xs flex-wrap items-center">
+              <button
+                onClick={handleGitFetch}
+                disabled={isStarting || gitBusy?.fetching || gitBusy?.pulling}
+                className={`btn ${gitBusy?.fetching ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '0.35rem 0.75rem' }}
+              >
+                {gitBusy?.fetching ? 'Fetch 中...' : 'Fetch'}
+              </button>
+              <button
+                onClick={handleGitPull}
+                disabled={
+                  isStarting ||
+                  gitBusy?.fetching ||
+                  gitBusy?.pulling ||
+                  !gitStatus.has_remote ||
+                  gitStatus.uncommitted_count > 0
+                }
+                className={`btn ${gitBusy?.pulling ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '0.35rem 0.75rem' }}
+                title={gitStatus.uncommitted_count > 0 ? '存在未提交更改，已禁用 Pull' : 'Pull（ff-only）'}
+              >
+                {gitBusy?.pulling ? 'Pull 中...' : 'Pull'}
+              </button>
+              {gitStatus.uncommitted_count > 0 && (
+                <span className="text-xs text-muted">有未提交更改，已禁用 Pull</span>
+              )}
+            </div>
+          )}
 
           {/* Debug Configuration Panel */}
           {showDebugConfig && (
@@ -512,6 +557,10 @@ export function ProjectCard({ project, processInfo, onProcessStart, onProcessSto
                 </div>
               )}
             </div>
+          )}
+
+          {showTerminal && (
+            <TerminalPanel projectId={project.id} projectPath={project.path} />
           )}
 
           {/* Logs Panel */}

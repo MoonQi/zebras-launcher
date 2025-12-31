@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useWorkspace } from './hooks/useWorkspace';
+import { useAppSettings } from './hooks/useAppSettings';
+import { useGitStatus } from './hooks/useGitStatus';
 import { WorkspaceManager } from './components/workspace/WorkspaceManager';
 import { ProjectGrid } from './components/workspace/ProjectGrid';
+import { SettingsPanel } from './components/settings/SettingsPanel';
 import { getWorkspaceList, loadWorkspace, deleteWorkspace, startAllProjects, stopProject } from './services/tauri';
 import type { PortChange, WorkspaceRef, ProcessInfo } from './types';
 
@@ -24,6 +27,13 @@ function App() {
   const [workspaceList, setWorkspaceList] = useState<WorkspaceRef[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [runningProcesses, setRunningProcesses] = useState<Map<string, ProcessInfo>>(new Map());
+  const [showSettings, setShowSettings] = useState(false);
+
+  const { settings, updateSettings, resetSettings } = useAppSettings();
+  const { gitStatuses, gitBusyByProjectId, gitDisabledReason, fetchProject, pullProject } = useGitStatus(
+    workspace?.projects ?? [],
+    settings
+  );
 
   // 加载工作区列表
   useEffect(() => {
@@ -215,28 +225,43 @@ function App() {
           <p>Zebras 前端工程启动器 - 轻松管理 Zebras2.0/3.0 项目</p>
         </div>
 
-        {/* 工作区选择下拉框 */}
-        {workspaceList.length > 0 && (
-          <div style={{ minWidth: '250px' }}>
-            <label className="block mb-sm text-secondary text-sm">
-              选择工作区:
-            </label>
-            <select
-              className="select"
-              value={selectedWorkspaceConfigPath}
-              onChange={(e) => handleWorkspaceChange(e.target.value)}
-              disabled={loadingList || loading}
-            >
-              <option value="">-- 选择工作区 --</option>
-              {workspaceList.map((ws) => (
-                <option key={ws.id} value={ws.config_path}>
-                  {ws.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className="flex items-end gap-md">
+          {/* 工作区选择下拉框 */}
+          {workspaceList.length > 0 && (
+            <div style={{ minWidth: '250px' }}>
+              <label className="block mb-sm text-secondary text-sm">
+                选择工作区:
+              </label>
+              <select
+                className="select"
+                value={selectedWorkspaceConfigPath}
+                onChange={(e) => handleWorkspaceChange(e.target.value)}
+                disabled={loadingList || loading}
+              >
+                <option value="">-- 选择工作区 --</option>
+                {workspaceList.map((ws) => (
+                  <option key={ws.id} value={ws.config_path}>
+                    {ws.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button className="btn btn-secondary" onClick={() => setShowSettings(true)}>
+            设置
+          </button>
+        </div>
       </header>
+
+      {showSettings && (
+        <SettingsPanel
+          settings={settings}
+          onChange={updateSettings}
+          onReset={resetSettings}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
 
       {/* 错误提示 */}
       {error && (
@@ -252,6 +277,25 @@ function App() {
             style={{ fontSize: '1.25rem', padding: '0.25rem 0.5rem' }}
           >
             ×
+          </button>
+        </div>
+      )}
+
+      {gitDisabledReason && (
+        <div
+          className="card mb-lg flex justify-between items-center"
+          style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.2)' }}
+        >
+          <div>
+            <strong className="text-warning">Git：</strong>
+            <span className="ml-sm text-warning">{gitDisabledReason}</span>
+          </div>
+          <button
+            onClick={() => alert(gitDisabledReason)}
+            className="btn-ghost text-warning"
+            style={{ fontSize: '0.875rem', padding: '0.25rem 0.5rem' }}
+          >
+            详情
           </button>
         </div>
       )}
@@ -310,6 +354,11 @@ function App() {
           onDebugConfigChange={handleDebugConfigChange}
           workspace={workspace}
           onWorkspaceUpdate={handleWorkspaceUpdate}
+          gitStatuses={gitStatuses}
+          gitBusyByProjectId={gitBusyByProjectId}
+          gitDisabledReason={gitDisabledReason}
+          onGitFetch={fetchProject}
+          onGitPull={pullProject}
         />
       )}
 

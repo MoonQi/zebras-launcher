@@ -26,6 +26,7 @@ fn main() {
                     // 阻塞式停止所有进程
                     tauri::async_runtime::block_on(async {
                         let _ = state.process_manager.stop_all().await;
+                        let _ = state.terminal_manager.stop_all().await;
                     });
                 }
             });
@@ -57,6 +58,17 @@ fn main() {
             commands::stop_all_projects,
             commands::start_all_projects,
             commands::run_project_task,
+            // Terminal commands
+            commands::create_terminal_session,
+            commands::get_terminal_sessions,
+            commands::run_terminal_command,
+            commands::kill_terminal_session,
+            commands::close_terminal_session,
+            // Git commands
+            commands::is_git_repo,
+            commands::get_git_status,
+            commands::git_fetch,
+            commands::git_pull,
             // Debug commands
             commands::update_debug_config,
         ])

@@ -1,5 +1,4 @@
 use crate::models::{ProcessInfo, Workspace};
-use crate::services::ProcessManager;
 use crate::state::AppState;
 use tauri::State;
 

@@ -3,6 +3,9 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 #[cfg(not(target_os = "windows"))]
 use crate::utils::USER_PATH;
 
@@ -24,6 +27,17 @@ impl GitManager {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        // Ensure Git never blocks on interactive terminal prompts in a GUI app.
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
+        cmd.env("GCM_INTERACTIVE", "never");
+
+        #[cfg(target_os = "windows")]
+        {
+            // Prevent spawning a new console window in packaged (GUI) builds.
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
 
         #[cfg(not(target_os = "windows"))]
         {

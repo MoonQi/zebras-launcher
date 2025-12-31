@@ -5,11 +5,15 @@ use serde_json::Value;
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ParseError {
+    #[error("IO 错误: {0}")]
     IoError(std::io::Error),
+    #[error("JSON 错误: {0}")]
     JsonError(serde_json::Error),
+    #[error("缺少字段: {0}")]
     MissingField(String),
+    #[error("不是 Zebras 项目")]
     NotAZebrasProject,
 }
 

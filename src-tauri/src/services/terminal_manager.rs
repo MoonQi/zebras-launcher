@@ -8,9 +8,6 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio::sync::Mutex;
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
-
 #[cfg(not(target_os = "windows"))]
 use crate::utils::USER_PATH;
 

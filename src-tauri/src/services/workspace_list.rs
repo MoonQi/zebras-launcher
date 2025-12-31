@@ -2,7 +2,7 @@ use crate::models::Workspace;
 use crate::services::WorkspaceService;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceList {
@@ -146,12 +146,5 @@ impl WorkspaceList {
         Ok(())
     }
 
-    /// 更新最后打开时间
-    pub fn update_last_opened(&mut self, workspace_id: &str) -> Result<(), String> {
-        if let Some(workspace_ref) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) {
-            workspace_ref.last_opened = Some(chrono::Utc::now().to_rfc3339());
-            self.save()?;
-        }
-        Ok(())
-    }
+    // Note: last_opened is currently written on add; no explicit "update last opened" API is needed.
 }

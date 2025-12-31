@@ -57,15 +57,6 @@ impl WorkspaceService {
         Ok(())
     }
 
-    /// 检查工作区文件是否存在
-    pub fn workspace_exists(workspace_id: &str) -> bool {
-        if let Ok(path) = Self::get_workspace_config_path(workspace_id) {
-            path.exists()
-        } else {
-            false
-        }
-    }
-
     /// 获取工作区配置文件路径（用于WorkspaceList）
     pub fn get_config_path(workspace_id: &str) -> Result<PathBuf, String> {
         Self::get_workspace_config_path(workspace_id)

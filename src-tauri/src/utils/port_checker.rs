@@ -5,19 +5,18 @@ pub fn is_port_available(port: u16) -> bool {
     TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
 
-/// 从指定端口开始查找下一个可用端口
-pub fn find_next_available_port(start: u16, end: u16) -> Option<u16> {
-    for port in start..=end {
-        if is_port_available(port) {
-            return Some(port);
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn find_next_available_port(start: u16, end: u16) -> Option<u16> {
+        for port in start..=end {
+            if is_port_available(port) {
+                return Some(port);
+            }
+        }
+        None
+    }
 
     #[test]
     fn test_is_port_available() {

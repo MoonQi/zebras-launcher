@@ -1,5 +1,4 @@
 use crate::models::{ProcessInfo, ProcessStatus};
-use crate::utils::kill_process_tree;
 use chrono::Utc;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -11,6 +10,9 @@ use tokio::sync::Mutex;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+
+#[cfg(not(target_os = "windows"))]
+use crate::utils::process_killer::kill_process_tree;
 
 #[cfg(not(target_os = "windows"))]
 use crate::utils::{resolve_program_in_user_path, USER_PATH};
@@ -32,8 +34,6 @@ pub struct ProcessManager {
 
 struct ProcessHandle {
     child: Child,
-    project_name: String,
-    project_path: String,
 }
 
 impl ProcessManager {
@@ -115,11 +115,7 @@ impl ProcessManager {
         let stderr = child.stderr.take();
 
         // 存储进程句柄
-        let handle = ProcessHandle {
-            child,
-            project_name: project_name.clone(),
-            project_path: project_path.clone(),
-        };
+        let handle = ProcessHandle { child };
 
         self.processes
             .lock()
@@ -332,17 +328,6 @@ impl ProcessManager {
     }
 
     /// 获取所有运行中的进程
-    pub async fn get_all_processes(&self) -> Vec<String> {
-        let processes = self.processes.lock().await;
-        processes.keys().cloned().collect()
-    }
-
-    /// 检查进程是否在运行
-    pub async fn is_running(&self, process_id: &str) -> bool {
-        let processes = self.processes.lock().await;
-        processes.contains_key(process_id)
-    }
-
     /// 停止所有进程
     pub async fn stop_all(&self) -> Result<(), String> {
         let process_ids: Vec<String> = {

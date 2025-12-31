@@ -62,7 +62,7 @@ impl PortManager {
 
     /// 顺序递增查找下一个可用端口
     fn find_next_port(&self, start: u16) -> Option<u16> {
-        let mut port = start;
+        let mut port = start.max(self.range_start);
 
         while port <= self.range_end {
             if is_port_available(port) && !self.used_ports.contains(&port) {

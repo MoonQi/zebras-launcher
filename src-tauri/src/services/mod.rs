@@ -7,7 +7,6 @@ pub mod terminal_manager;
 pub mod workspace_list;
 pub mod workspace_service;
 
-pub use config_parser::*;
 pub use git_manager::*;
 pub use port_manager::*;
 pub use process_manager::*;

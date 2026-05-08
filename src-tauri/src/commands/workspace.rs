@@ -1,5 +1,7 @@
-use crate::models::Workspace;
-use crate::services::{ProjectScanner, WorkspaceList, WorkspaceRef, WorkspaceService};
+use crate::models::{Workspace, WorkspaceSourceType};
+use crate::services::{
+    ManagedProjectService, ProjectScanner, WorkspaceList, WorkspaceRef, WorkspaceService,
+};
 use std::path::PathBuf;
 
 #[tauri::command]
@@ -46,7 +48,15 @@ pub async fn load_workspace(workspace_path: String) -> Result<Workspace, String>
 
     // 尝试加载工作区
     match WorkspaceService::load_workspace(&path) {
-        Ok(workspace) => Ok(workspace),
+        Ok(workspace) => {
+            if workspace.source_type == WorkspaceSourceType::ManagedProject {
+                let refreshed = ManagedProjectService::refresh_workspace(&workspace)?;
+                WorkspaceService::save_workspace(&refreshed)?;
+                Ok(refreshed)
+            } else {
+                Ok(workspace)
+            }
+        }
         Err(_) => {
             // 如果加载失败，尝试从工作区列表中找到对应的工作区 ID
             // 并使用新路径加载
@@ -56,7 +66,13 @@ pub async fn load_workspace(workspace_path: String) -> Result<Workspace, String>
                 if ws_ref.config_path == path {
                     // 找到对应的工作区，使用 ID 构建新路径
                     let new_path = WorkspaceService::get_config_path(&ws_ref.id)?;
-                    return WorkspaceService::load_workspace(&new_path);
+                    let workspace = WorkspaceService::load_workspace(&new_path)?;
+                    if workspace.source_type == WorkspaceSourceType::ManagedProject {
+                        let refreshed = ManagedProjectService::refresh_workspace(&workspace)?;
+                        WorkspaceService::save_workspace(&refreshed)?;
+                        return Ok(refreshed);
+                    }
+                    return Ok(workspace);
                 }
             }
 
@@ -81,6 +97,10 @@ pub async fn add_workspace_folder(
     mut workspace: Workspace,
     folder_path: String,
 ) -> Result<Workspace, String> {
+    if workspace.source_type == WorkspaceSourceType::ManagedProject {
+        return Err("受管项目实例不支持添加监控文件夹".to_string());
+    }
+
     let path = PathBuf::from(&folder_path);
 
     if !path.exists() || !path.is_dir() {
@@ -103,6 +123,10 @@ pub async fn remove_workspace_folder(
     mut workspace: Workspace,
     folder_path: String,
 ) -> Result<Workspace, String> {
+    if workspace.source_type == WorkspaceSourceType::ManagedProject {
+        return Err("受管项目实例不支持移除监控文件夹".to_string());
+    }
+
     workspace.remove_folder(&folder_path);
 
     // 重新扫描所有文件夹
@@ -145,8 +169,15 @@ pub async fn update_project_enabled(
     project_id: String,
     enabled: bool,
 ) -> Result<Workspace, String> {
+    if workspace.source_type == WorkspaceSourceType::ManagedProject {
+        return Err("受管项目实例中的仓库不参与批量启动".to_string());
+    }
+
     // 查找并更新项目的 enabled 状态
     if let Some(project) = workspace.projects.iter_mut().find(|p| p.id == project_id) {
+        if !project.runnable {
+            return Err("该项目不支持批量启动".to_string());
+        }
         project.enabled = Some(enabled);
     } else {
         return Err("未找到指定的项目".to_string());

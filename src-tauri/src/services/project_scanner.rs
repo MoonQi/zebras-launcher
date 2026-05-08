@@ -104,7 +104,7 @@ mod tests {
         // 这个测试需要实际的 Zebras 项目目录才能运行
         // 这里只是示例
         let path = PathBuf::from(".");
-        let projects = ProjectScanner::scan_directory(&path, 2);
+        let _projects = ProjectScanner::scan_directory(&path, 2);
         // 断言会根据实际情况而定
     }
 }

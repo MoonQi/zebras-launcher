@@ -59,7 +59,7 @@ pub async fn start_all_projects(
 
     for project in workspace.projects.iter() {
         // 只启动有效且已启用的项目
-        if !project.is_valid {
+        if !project.is_valid || !project.runnable {
             continue;
         }
 

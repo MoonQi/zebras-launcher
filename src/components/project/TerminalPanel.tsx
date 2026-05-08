@@ -12,6 +12,7 @@ import {
 interface TerminalPanelProps {
   projectId: string;
   projectPath: string;
+  showQuickCommands?: boolean;
 }
 
 const QUICK_COMMANDS: Array<{ label: string; command: string }> = [
@@ -20,7 +21,11 @@ const QUICK_COMMANDS: Array<{ label: string; command: string }> = [
   { label: 'npm run deploy', command: 'npm run deploy' },
 ];
 
-export function TerminalPanel({ projectId, projectPath }: TerminalPanelProps) {
+export function TerminalPanel({
+  projectId,
+  projectPath,
+  showQuickCommands = true,
+}: TerminalPanelProps) {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [commandBySessionId, setCommandBySessionId] = useState<Map<string, string>>(new Map());
@@ -237,23 +242,25 @@ export function TerminalPanel({ projectId, projectPath }: TerminalPanelProps) {
         </button>
       </div>
 
-      <div className="flex gap-xs flex-wrap" style={{ padding: '10px' }}>
-        {QUICK_COMMANDS.map((c) => (
-          <button
-            key={c.label}
-            className="btn btn-secondary"
-            disabled={busy || !activeSessionId}
-            style={{ padding: '0.35rem 0.75rem' }}
-            onClick={() => {
-              if (!activeSessionId) return;
-              setCommandBySessionId((prev) => new Map(prev).set(activeSessionId, c.command));
-              void handleRun(c.command);
-            }}
-          >
-            {c.label}
-          </button>
-        ))}
-      </div>
+      {showQuickCommands && (
+        <div className="flex gap-xs flex-wrap" style={{ padding: '10px' }}>
+          {QUICK_COMMANDS.map((c) => (
+            <button
+              key={c.label}
+              className="btn btn-secondary"
+              disabled={busy || !activeSessionId}
+              style={{ padding: '0.35rem 0.75rem' }}
+              onClick={() => {
+                if (!activeSessionId) return;
+                setCommandBySessionId((prev) => new Map(prev).set(activeSessionId, c.command));
+                void handleRun(c.command);
+              }}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div
         className="flex gap-xs items-center"

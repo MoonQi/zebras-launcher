@@ -1,5 +1,6 @@
 pub mod config_parser;
 pub mod git_manager;
+pub mod managed_project_service;
 pub mod port_manager;
 pub mod process_manager;
 pub mod project_scanner;
@@ -8,6 +9,7 @@ pub mod workspace_list;
 pub mod workspace_service;
 
 pub use git_manager::*;
+pub use managed_project_service::*;
 pub use port_manager::*;
 pub use process_manager::*;
 pub use project_scanner::*;

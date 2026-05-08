@@ -6,8 +6,17 @@ import { WorkspaceManager } from './components/workspace/WorkspaceManager';
 import { ProjectGrid } from './components/workspace/ProjectGrid';
 import { SettingsPanel } from './components/settings/SettingsPanel';
 import { DependencyGraphModal } from './components/workspace/DependencyGraphModal';
-import { getWorkspaceList, loadWorkspace, deleteWorkspace, startAllProjects, startProject, stopProject } from './services/tauri';
-import type { PortChange, WorkspaceRef, ProcessInfo } from './types';
+import {
+  getWorkspaceList,
+  loadWorkspace,
+  deleteWorkspace,
+  startAllProjects,
+  startProject,
+  stopProject,
+  repairProjectInstance,
+  rebuildProjectLinks,
+} from './services/tauri';
+import type { CreateProjectInstanceInput, PortChange, WorkspaceRef, ProcessInfo } from './types';
 
 function App() {
   const {
@@ -15,6 +24,7 @@ function App() {
     loading,
     error,
     selectAndCreateWorkspace,
+    createManagedProject,
     rescanProjects,
     resolveConflicts,
     addFolder,
@@ -32,7 +42,7 @@ function App() {
   const [showDependencyGraph, setShowDependencyGraph] = useState(false);
 
   const { settings, updateSettings, resetSettings } = useAppSettings();
-  const { gitStatuses, gitBusyByProjectId, gitDisabledReason, fetchProject, pullProject } = useGitStatus(
+  const { gitStatuses, gitBusyByProjectId, gitDisabledReason, fetchProject, pullProject, refreshProject } = useGitStatus(
     workspace?.projects ?? [],
     settings
   );
@@ -74,6 +84,11 @@ function App() {
     await loadWorkspaceList(); // 刷新工作区列表
   };
 
+  const handleCreateManagedProject = async (input: CreateProjectInstanceInput) => {
+    await createManagedProject(input);
+    await loadWorkspaceList();
+  };
+
   const handleDeleteWorkspace = async () => {
     if (!workspace) return;
 
@@ -110,6 +125,13 @@ function App() {
 
   const handleStartAll = async () => {
     if (!workspace) return;
+    const runnableProjects = workspace.projects.filter(
+      (project) => project.is_valid && project.runnable && (project.enabled ?? true)
+    );
+    if (runnableProjects.length === 0) {
+      alert('当前工作区没有可批量启动的项目。');
+      return;
+    }
 
     try {
       setError(null);
@@ -257,6 +279,29 @@ function App() {
     alert(`已停止当前工作区的 ${stoppedProjectIds.length} 个项目！`);
   };
 
+  const handleRepairManagedProject = async () => {
+    if (!workspace || workspace.source_type !== 'managed_project') return;
+    try {
+      setError(null);
+      const repaired = await repairProjectInstance(workspace.root_path);
+      setWorkspace(repaired);
+      await loadWorkspaceList();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleRebuildManagedLinks = async () => {
+    if (!workspace || workspace.source_type !== 'managed_project') return;
+    try {
+      setError(null);
+      const rebuilt = await rebuildProjectLinks(workspace.root_path);
+      setWorkspace(rebuilt);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   // 处理调试配置变更，重新扫描项目
   const handleDebugConfigChange = async () => {
     if (workspace) {
@@ -276,9 +321,9 @@ function App() {
   // 检查是否所有有效且启用的项目都在运行
   const allProjectsRunning = workspace ?
     workspace.projects
-      .filter(p => p.is_valid && (p.enabled ?? true)) // 只检查启用的项目
+      .filter(p => p.is_valid && p.runnable && (p.enabled ?? true)) // 只检查启用且可运行的项目
       .every(p => runningProcesses.has(p.id)) &&
-    workspace.projects.filter(p => p.is_valid && (p.enabled ?? true)).length > 0
+    workspace.projects.filter(p => p.is_valid && p.runnable && (p.enabled ?? true)).length > 0
     : false;
 
   const selectedWorkspaceConfigPath = workspace
@@ -310,7 +355,7 @@ function App() {
                 <option value="">-- 选择工作区 --</option>
                 {workspaceList.map((ws) => (
                   <option key={ws.id} value={ws.config_path}>
-                    {ws.name}
+                    {ws.name}{ws.source_type === 'managed_project' ? ' [实例]' : ''}
                   </option>
                 ))}
               </select>
@@ -402,6 +447,7 @@ function App() {
       <WorkspaceManager
         workspace={workspace}
         onCreateWorkspace={handleCreateWorkspace}
+        onCreateManagedProject={handleCreateManagedProject}
         onDeleteWorkspace={handleDeleteWorkspace}
         onRescan={handleRescan}
         onResolveConflicts={handleResolveConflicts}
@@ -410,11 +456,13 @@ function App() {
         onRemoveFolder={removeFolder}
         onStartAll={handleStartAll}
         onStopAll={handleStopAll}
+        onRepairManagedProject={handleRepairManagedProject}
+        onRebuildManagedLinks={handleRebuildManagedLinks}
         loading={loading}
         allProjectsRunning={allProjectsRunning}
       />
 
-      {showDependencyGraph && workspace && (
+      {showDependencyGraph && workspace && workspace.source_type !== 'managed_project' && (
         <DependencyGraphModal
           projects={workspace.projects}
           runningProcesses={runningProcesses}
@@ -439,6 +487,7 @@ function App() {
           gitDisabledReason={gitDisabledReason}
           onGitFetch={fetchProject}
           onGitPull={pullProject}
+          onGitRefresh={refreshProject}
         />
       )}
 

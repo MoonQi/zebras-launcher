@@ -1,5 +1,6 @@
 pub mod debug;
 pub mod git;
+pub mod managed_project;
 pub mod port;
 pub mod process;
 pub mod project;
@@ -8,6 +9,7 @@ pub mod workspace;
 
 pub use debug::*;
 pub use git::*;
+pub use managed_project::*;
 pub use port::*;
 pub use process::*;
 pub use project::*;

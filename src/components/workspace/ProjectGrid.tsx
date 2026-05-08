@@ -14,6 +14,7 @@ interface ProjectGridProps {
   gitDisabledReason: string | null;
   onGitFetch: (project: ProjectInfo) => Promise<void>;
   onGitPull: (project: ProjectInfo) => Promise<GitPullResult | null>;
+  onGitRefresh: (project: ProjectInfo) => Promise<void>;
 }
 
 export function ProjectGrid({
@@ -28,13 +29,18 @@ export function ProjectGrid({
   gitDisabledReason,
   onGitFetch,
   onGitPull,
+  onGitRefresh,
 }: ProjectGridProps) {
+  const isManagedProject = workspace.source_type === 'managed_project';
+
   if (projects.length === 0) {
     return (
       <div className="text-center py-xl text-secondary">
-        <p className="text-lg mb-sm">未发现任何 Zebras 项目</p>
+        <p className="text-lg mb-sm">{isManagedProject ? '未发现任何仓库' : '未发现任何 Zebras 项目'}</p>
         <p className="text-sm">
-          请确保选择的目录包含 zebra.json 或 zebras.config.ts 配置文件
+          {isManagedProject
+            ? '请检查 .zebras-project.json 或重新执行修复流程。'
+            : '请确保选择的目录包含 zebra.json 或 zebras.config.ts 配置文件'}
         </p>
       </div>
     );
@@ -53,6 +59,9 @@ export function ProjectGrid({
     subApps: projects.filter((p) => p.type === 'app' || p.type === 'sub').length,
     // 组件：lib(v3) + component(v2)
     components: projects.filter((p) => p.type === 'lib' || p.type === 'component').length,
+    frontendApps: projects.filter((p) => p.repo_role === 'frontend_app').length,
+    backendServices: projects.filter((p) => p.repo_role === 'backend_service').length,
+    frontendPackages: projects.filter((p) => p.repo_role === 'frontend_package').length,
   };
 
   return (
@@ -65,16 +74,32 @@ export function ProjectGrid({
           {stats.invalid > 0 && <StatItem label="错误" value={stats.invalid} color="var(--color-danger)" />}
         </div>
         
-        <div className="flex-1 flex justify-center gap-lg border-l border-border" style={{ borderLeft: '1px solid var(--color-border)' }}>
-          <StatItem label="V2" value={stats.v2} color="#60a5fa" />
-          <StatItem label="V3" value={stats.v3} color="#4ade80" />
-        </div>
-        
-        <div className="flex-1 flex justify-center gap-lg border-l border-border" style={{ borderLeft: '1px solid var(--color-border)' }}>
-          <StatItem label="主应用" value={stats.mainApps} color="#10b981" />
-          <StatItem label="子应用" value={stats.subApps} color="#f59e0b" />
-          <StatItem label="组件" value={stats.components} color="#8b5cf6" />
-        </div>
+        {isManagedProject ? (
+          <>
+            <div className="flex-1 flex justify-center gap-lg border-l border-border" style={{ borderLeft: '1px solid var(--color-border)' }}>
+              <StatItem label="前端应用" value={stats.frontendApps} color="#10b981" />
+              <StatItem label="后端服务" value={stats.backendServices} color="#60a5fa" />
+              <StatItem label="前端包" value={stats.frontendPackages} color="#8b5cf6" />
+            </div>
+            <div className="flex-1 flex justify-center gap-lg border-l border-border" style={{ borderLeft: '1px solid var(--color-border)' }}>
+              <StatItem label="可运行" value={projects.filter((p) => p.runnable).length} color="#f59e0b" />
+              <StatItem label="Degraded" value={projects.filter((p) => p.provision_status === 'degraded').length} color="#ef4444" />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex-1 flex justify-center gap-lg border-l border-border" style={{ borderLeft: '1px solid var(--color-border)' }}>
+              <StatItem label="V2" value={stats.v2} color="#60a5fa" />
+              <StatItem label="V3" value={stats.v3} color="#4ade80" />
+            </div>
+            
+            <div className="flex-1 flex justify-center gap-lg border-l border-border" style={{ borderLeft: '1px solid var(--color-border)' }}>
+              <StatItem label="主应用" value={stats.mainApps} color="#10b981" />
+              <StatItem label="子应用" value={stats.subApps} color="#f59e0b" />
+              <StatItem label="组件" value={stats.components} color="#8b5cf6" />
+            </div>
+          </>
+        )}
       </div>
 
       {/* 项目网格 */}
@@ -100,6 +125,7 @@ export function ProjectGrid({
             gitDisabledReason={gitDisabledReason}
             onGitFetch={onGitFetch}
             onGitPull={onGitPull}
+            onGitRefresh={onGitRefresh}
           />
         ))}
       </div>
@@ -120,4 +146,3 @@ function StatItem({ label, value, color }: StatItemProps) {
     </div>
   );
 }
-

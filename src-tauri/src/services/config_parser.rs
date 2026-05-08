@@ -194,6 +194,7 @@ impl ConfigParser {
             return match version {
                 ZebrasVersion::V3 => Self::parse_v3_config(project_path),
                 ZebrasVersion::V2 => Self::parse_v2_config(project_path),
+                ZebrasVersion::Managed => Err(ParseError::NotAZebrasProject),
             };
         }
         println!(
@@ -250,6 +251,7 @@ impl ConfigParser {
         match project.version {
             ZebrasVersion::V2 => Self::update_v2_port(&project.path, new_port),
             ZebrasVersion::V3 => Self::update_v3_port(&project.path, new_port),
+            ZebrasVersion::Managed => Err(ParseError::NotAZebrasProject),
         }
     }
 

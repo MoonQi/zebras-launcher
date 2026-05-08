@@ -1,6 +1,7 @@
 export * from './workspace';
 export * from './workspace_ref';
 export * from './project';
+export * from './managed_project';
 export * from './process';
 export * from './log';
 export * from './terminal';

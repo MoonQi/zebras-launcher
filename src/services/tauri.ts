@@ -3,16 +3,44 @@ import type {
   Workspace,
   WorkspaceRef,
   ProjectInfo,
+  CreateProjectInstanceInput,
+  ValidationResult,
   PortChange,
   ProcessInfo,
   TerminalSession,
   GitStatus,
   GitPullResult,
+  GitBranch,
+  GitSwitchResult,
 } from '../types';
 
 // Workspace APIs
 export async function createWorkspace(name: string, folders: string[]): Promise<Workspace> {
   return invoke('create_workspace', { name, folders });
+}
+
+export async function validateProjectInstance(
+  input: CreateProjectInstanceInput
+): Promise<ValidationResult> {
+  return invoke('validate_project_instance', { input });
+}
+
+export async function createProjectInstance(
+  input: CreateProjectInstanceInput
+): Promise<Workspace> {
+  return invoke('create_project_instance', { input });
+}
+
+export async function loadProjectInstance(rootPath: string): Promise<Workspace> {
+  return invoke('load_project_instance', { rootPath });
+}
+
+export async function repairProjectInstance(rootPath: string): Promise<Workspace> {
+  return invoke('repair_project_instance', { rootPath });
+}
+
+export async function rebuildProjectLinks(rootPath: string): Promise<Workspace> {
+  return invoke('rebuild_project_links', { rootPath });
 }
 
 export async function loadWorkspace(workspacePath: string): Promise<Workspace> {
@@ -157,6 +185,18 @@ export async function gitFetch(path: string): Promise<GitStatus> {
 
 export async function gitPull(path: string): Promise<GitPullResult> {
   return invoke('git_pull', { path });
+}
+
+export async function listGitBranches(path: string, fetchFirst = false): Promise<GitBranch[]> {
+  return invoke('list_git_branches', { path, fetchFirst });
+}
+
+export async function gitSwitchBranch(
+  path: string,
+  branchName: string,
+  isRemote: boolean
+): Promise<GitSwitchResult> {
+  return invoke('git_switch_branch', { path, branchName, isRemote });
 }
 
 // Debug APIs

@@ -1,4 +1,4 @@
-use crate::models::Workspace;
+use crate::models::{Workspace, WorkspaceSourceType};
 use crate::services::WorkspaceService;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -14,6 +14,8 @@ pub struct WorkspaceRef {
     pub id: String,
     pub name: String,
     pub config_path: PathBuf,
+    #[serde(default = "default_workspace_source_type")]
+    pub source_type: WorkspaceSourceType,
     pub last_opened: Option<String>,
 }
 
@@ -124,14 +126,20 @@ impl WorkspaceList {
         let config_path = WorkspaceService::get_config_path(&workspace.id)?;
 
         // 检查是否已存在
-        if self.workspaces.iter().any(|w| w.id == workspace.id) {
-            return Ok(()); // 已存在，不重复添加
+        if let Some(existing) = self.workspaces.iter_mut().find(|w| w.id == workspace.id) {
+            existing.name = workspace.name.clone();
+            existing.config_path = config_path;
+            existing.source_type = workspace.source_type.clone();
+            existing.last_opened = Some(chrono::Utc::now().to_rfc3339());
+            self.save()?;
+            return Ok(());
         }
 
         self.workspaces.push(WorkspaceRef {
             id: workspace.id.clone(),
             name: workspace.name.clone(),
             config_path,
+            source_type: workspace.source_type.clone(),
             last_opened: Some(chrono::Utc::now().to_rfc3339()),
         });
 
@@ -147,4 +155,8 @@ impl WorkspaceList {
     }
 
     // Note: last_opened is currently written on add; no explicit "update last opened" API is needed.
+}
+
+fn default_workspace_source_type() -> WorkspaceSourceType {
+    WorkspaceSourceType::FolderScan
 }

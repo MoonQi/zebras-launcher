@@ -36,6 +36,11 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             // Workspace commands
             commands::create_workspace,
+            commands::validate_project_instance,
+            commands::create_project_instance,
+            commands::load_project_instance,
+            commands::repair_project_instance,
+            commands::rebuild_project_links,
             commands::load_workspace,
             commands::scan_workspace_projects,
             commands::save_workspace,
@@ -69,6 +74,8 @@ fn main() {
             commands::get_git_status,
             commands::git_fetch,
             commands::git_pull,
+            commands::list_git_branches,
+            commands::git_switch_branch,
             // Debug commands
             commands::update_debug_config,
         ])

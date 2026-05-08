@@ -1,4 +1,4 @@
-use crate::models::{GitPullResult, GitStatus};
+use crate::models::{GitBranch, GitPullResult, GitStatus, GitSwitchResult};
 use std::io::ErrorKind;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -72,6 +72,67 @@ impl GitManager {
         }
     }
 
+    fn is_switch_unsupported(stderr: &str) -> bool {
+        stderr.contains("not a git command") || stderr.contains("unknown subcommand")
+    }
+
+    fn parse_local_branches(output: &str) -> Vec<GitBranch> {
+        output
+            .lines()
+            .filter_map(|line| {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+
+                let mut parts = trimmed.split('\t');
+                let name = parts.next()?.trim().to_string();
+                if name.is_empty() {
+                    return None;
+                }
+                let head = parts.next().unwrap_or("").trim();
+                let upstream = parts
+                    .next()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string());
+
+                Some(GitBranch {
+                    name,
+                    is_remote: false,
+                    is_current: head == "*",
+                    upstream,
+                })
+            })
+            .collect()
+    }
+
+    fn parse_remote_branches(output: &str) -> Vec<GitBranch> {
+        output
+            .lines()
+            .filter_map(|line| {
+                let name = line.trim();
+                if name.is_empty() || name.ends_with("/HEAD") {
+                    return None;
+                }
+
+                Some(GitBranch {
+                    name: name.to_string(),
+                    is_remote: true,
+                    is_current: false,
+                    upstream: None,
+                })
+            })
+            .collect()
+    }
+
+    fn derive_local_branch_name(remote_branch: &str) -> &str {
+        remote_branch
+            .split_once('/')
+            .map(|(_, branch)| branch)
+            .unwrap_or(remote_branch)
+    }
+
     fn get_status_sync(path: &str) -> Result<GitStatus, String> {
         if !Self::is_git_repo(path) {
             return Err("NOT_GIT_REPO".to_string());
@@ -121,6 +182,39 @@ impl GitManager {
         Ok(status)
     }
 
+    fn list_branches_sync(path: &str, fetch_first: bool) -> Result<Vec<GitBranch>, String> {
+        if !Self::is_git_repo(path) {
+            return Err("NOT_GIT_REPO".to_string());
+        }
+
+        if fetch_first {
+            let _ = Self::fetch_sync(path);
+        }
+
+        let local_output = Self::run_git_checked(
+            &[
+                "for-each-ref",
+                "--sort=refname",
+                "--format=%(refname:short)\t%(HEAD)\t%(upstream:short)",
+                "refs/heads",
+            ],
+            path,
+        )?;
+        let remote_output = Self::run_git_checked(
+            &[
+                "for-each-ref",
+                "--sort=refname",
+                "--format=%(refname:short)",
+                "refs/remotes",
+            ],
+            path,
+        )?;
+
+        let mut branches = Self::parse_local_branches(&local_output);
+        branches.extend(Self::parse_remote_branches(&remote_output));
+        Ok(branches)
+    }
+
     fn fetch_sync(path: &str) -> Result<(), String> {
         if !Self::is_git_repo(path) {
             return Err("NOT_GIT_REPO".to_string());
@@ -162,8 +256,114 @@ impl GitManager {
         })
     }
 
+    fn switch_local_branch_sync(path: &str, branch_name: &str) -> Result<GitSwitchResult, String> {
+        if !Self::is_git_repo(path) {
+            return Err("NOT_GIT_REPO".to_string());
+        }
+
+        let switch_result = Self::run_git(&["switch", branch_name], path)?;
+        let ok = if switch_result.0 == 0 {
+            true
+        } else if Self::is_switch_unsupported(&switch_result.2) {
+            let checkout_result = Self::run_git(&["checkout", branch_name], path)?;
+            if checkout_result.0 != 0 {
+                let err = checkout_result.2.trim();
+                return Err(if err.is_empty() {
+                    format!("切换分支失败，退出码 {}", checkout_result.0)
+                } else {
+                    err.to_string()
+                });
+            }
+            true
+        } else {
+            false
+        };
+
+        if !ok {
+            let err = switch_result.2.trim();
+            return Err(if err.is_empty() {
+                format!("切换分支失败，退出码 {}", switch_result.0)
+            } else {
+                err.to_string()
+            });
+        }
+
+        let status = Self::get_status_sync(path)?;
+        Ok(GitSwitchResult {
+            message: format!(
+                "已切换到 {}",
+                status
+                    .branch
+                    .clone()
+                    .unwrap_or_else(|| branch_name.to_string())
+            ),
+            status,
+        })
+    }
+
+    fn switch_remote_branch_sync(
+        path: &str,
+        remote_branch: &str,
+    ) -> Result<GitSwitchResult, String> {
+        if !Self::is_git_repo(path) {
+            return Err("NOT_GIT_REPO".to_string());
+        }
+
+        let local_branch = Self::derive_local_branch_name(remote_branch).to_string();
+        let local_ref = format!("refs/heads/{}", local_branch);
+        let local_exists =
+            Self::run_git(&["show-ref", "--verify", "--quiet", &local_ref], path)?.0 == 0;
+
+        if local_exists {
+            return Self::switch_local_branch_sync(path, &local_branch);
+        }
+
+        let switch_result = Self::run_git(&["switch", "--track", remote_branch], path)?;
+        let ok = if switch_result.0 == 0 {
+            true
+        } else if Self::is_switch_unsupported(&switch_result.2) {
+            let checkout_result = Self::run_git(&["checkout", "--track", remote_branch], path)?;
+            if checkout_result.0 != 0 {
+                let err = checkout_result.2.trim();
+                return Err(if err.is_empty() {
+                    format!("切换远端分支失败，退出码 {}", checkout_result.0)
+                } else {
+                    err.to_string()
+                });
+            }
+            true
+        } else {
+            false
+        };
+
+        if !ok {
+            let err = switch_result.2.trim();
+            return Err(if err.is_empty() {
+                format!("切换远端分支失败，退出码 {}", switch_result.0)
+            } else {
+                err.to_string()
+            });
+        }
+
+        let status = Self::get_status_sync(path)?;
+        Ok(GitSwitchResult {
+            message: format!("已切换到 {}", status.branch.clone().unwrap_or(local_branch)),
+            status,
+        })
+    }
+
     pub async fn get_status(&self, path: String) -> Result<GitStatus, String> {
         tokio::task::spawn_blocking(move || Self::get_status_sync(&path))
+            .await
+            .map_err(|e| format!("任务失败: {}", e))?
+    }
+
+    pub async fn list_branches(
+        &self,
+        path: String,
+        fetch_first: bool,
+    ) -> Result<Vec<GitBranch>, String> {
+        tokio::task::spawn_blocking(move || Self::list_branches_sync(&path, fetch_first))
             .await
             .map_err(|e| format!("任务失败: {}", e))?
     }
@@ -181,5 +381,57 @@ impl GitManager {
         tokio::task::spawn_blocking(move || Self::pull_sync(&path))
             .await
             .map_err(|e| format!("任务失败: {}", e))?
+    }
+
+    pub async fn switch_branch(
+        &self,
+        path: String,
+        branch_name: String,
+        is_remote: bool,
+    ) -> Result<GitSwitchResult, String> {
+        tokio::task::spawn_blocking(move || {
+            if is_remote {
+                Self::switch_remote_branch_sync(&path, &branch_name)
+            } else {
+                Self::switch_local_branch_sync(&path, &branch_name)
+            }
+        })
+        .await
+        .map_err(|e| format!("任务失败: {}", e))?
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GitManager;
+
+    #[test]
+    fn parse_local_branches_marks_current_and_upstream() {
+        let branches = GitManager::parse_local_branches(
+            "main\t*\torigin/main\nfeature/test\t \torigin/feature/test\n",
+        );
+        assert_eq!(branches.len(), 2);
+        assert_eq!(branches[0].name, "main");
+        assert!(branches[0].is_current);
+        assert_eq!(branches[0].upstream.as_deref(), Some("origin/main"));
+        assert_eq!(branches[1].name, "feature/test");
+        assert!(!branches[1].is_current);
+    }
+
+    #[test]
+    fn parse_remote_branches_skips_head_pointer() {
+        let branches =
+            GitManager::parse_remote_branches("origin/HEAD\norigin/main\norigin/feature/test\n");
+        assert_eq!(branches.len(), 2);
+        assert_eq!(branches[0].name, "origin/main");
+        assert!(branches.iter().all(|branch| branch.is_remote));
+    }
+
+    #[test]
+    fn derive_local_branch_name_preserves_nested_branch_name() {
+        assert_eq!(
+            GitManager::derive_local_branch_name("origin/feature/test"),
+            "feature/test"
+        );
     }
 }

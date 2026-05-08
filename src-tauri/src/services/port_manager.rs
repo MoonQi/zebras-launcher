@@ -104,6 +104,9 @@ mod tests {
             id: "1".to_string(),
             path: PathBuf::from("/test1"),
             version: ZebrasVersion::V3,
+            source_type: crate::models::ProjectSourceType::Zebras,
+            repo_role: None,
+            provision_status: None,
             platform: "web".to_string(),
             type_: "app".to_string(),
             name: "test1".to_string(),
@@ -115,6 +118,7 @@ mod tests {
             error: None,
             debug: None,
             enabled: None,
+            runnable: true,
         }];
 
         let global_ports = HashSet::new();

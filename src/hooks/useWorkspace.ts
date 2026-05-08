@@ -2,13 +2,15 @@ import { useState, useCallback } from 'react';
 import { open } from '@tauri-apps/api/dialog';
 import {
   createWorkspace,
+  createProjectInstance,
+  loadProjectInstance,
   scanWorkspaceProjects,
   saveWorkspace,
   resolvePortConflicts,
   addWorkspaceFolder,
   removeWorkspaceFolder,
 } from '../services/tauri';
-import type { Workspace, PortChange } from '../types';
+import type { CreateProjectInstanceInput, Workspace, PortChange } from '../types';
 
 export function useWorkspace() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -49,6 +51,22 @@ export function useWorkspace() {
     }
   }, []);
 
+  const createManagedProject = useCallback(async (input: CreateProjectInstanceInput) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const nextWorkspace = await createProjectInstance(input);
+      setWorkspace(nextWorkspace);
+      setLoading(false);
+      return nextWorkspace;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      setLoading(false);
+      return null;
+    }
+  }, []);
+
   // 重新扫描工作区项目
   const rescanProjects = useCallback(async () => {
     if (!workspace) return;
@@ -56,6 +74,14 @@ export function useWorkspace() {
     try {
       setLoading(true);
       setError(null);
+
+      if (workspace.source_type === 'managed_project') {
+        const refreshedWorkspace = await loadProjectInstance(workspace.root_path);
+        setWorkspace(refreshedWorkspace);
+        await saveWorkspace(refreshedWorkspace);
+        setLoading(false);
+        return;
+      }
 
       const projects = await scanWorkspaceProjects(workspace.folders);
       const normalizePath = (p: string) => p.replace(/\\/g, '/');
@@ -91,6 +117,10 @@ export function useWorkspace() {
   // 添加文件夹到工作区
   const addFolder = useCallback(async () => {
     if (!workspace) return;
+    if (workspace.source_type === 'managed_project') {
+      setError('受管项目实例不支持添加监控文件夹');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -122,6 +152,10 @@ export function useWorkspace() {
   // 从工作区移除文件夹
   const removeFolder = useCallback(async (folderPath: string) => {
     if (!workspace) return;
+    if (workspace.source_type === 'managed_project') {
+      setError('受管项目实例不支持移除监控文件夹');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -141,6 +175,10 @@ export function useWorkspace() {
   // 解决端口冲突
   const resolveConflicts = useCallback(async (): Promise<PortChange[]> => {
     if (!workspace) return [];
+    if (workspace.source_type === 'managed_project') {
+      setError('受管项目实例不支持自动解决端口冲突');
+      return [];
+    }
 
     try {
       setLoading(true);
@@ -193,6 +231,7 @@ export function useWorkspace() {
     loading,
     error,
     selectAndCreateWorkspace,
+    createManagedProject,
     rescanProjects,
     resolveConflicts,
     updateWorkspace,

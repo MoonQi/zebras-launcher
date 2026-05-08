@@ -1,3 +1,4 @@
+use super::{ProvisionStatus, WorkspaceSourceType};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -6,7 +7,11 @@ use std::path::PathBuf;
 pub struct Workspace {
     pub id: String,
     pub name: String,
-    pub root_path: PathBuf,   // 工作区配置文件的存储路径
+    pub root_path: PathBuf, // 工作区展示根目录
+    #[serde(default = "default_workspace_source_type")]
+    pub source_type: WorkspaceSourceType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provision_status: Option<ProvisionStatus>,
     pub folders: Vec<String>, // 包含的多个代码文件夹路径
     pub created_at: DateTime<Utc>,
     pub last_modified: DateTime<Utc>,
@@ -46,6 +51,8 @@ impl Workspace {
             id: uuid::Uuid::new_v4().to_string(),
             name,
             root_path,
+            source_type: WorkspaceSourceType::FolderScan,
+            provision_status: None,
             folders: Vec::new(), // 初始为空，后续添加文件夹
             created_at: Utc::now(),
             last_modified: Utc::now(),
@@ -65,4 +72,8 @@ impl Workspace {
         self.folders.retain(|f| f != folder_path);
         self.last_modified = Utc::now();
     }
+}
+
+fn default_workspace_source_type() -> WorkspaceSourceType {
+    WorkspaceSourceType::FolderScan
 }
